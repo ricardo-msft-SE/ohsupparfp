@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RFP Recommendation</title>
+  <style>
+    :root {
+      --bg-1: #e6f2ff;
+      --bg-2: #f7f4ea;
+      --ink: #1f2a35;
+      --accent: #005ea2;
+      --accent-2: #2e8540;
+      --card: #ffffff;
+      --muted: #5f6b76;
+      --border: #d8dee4;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 400px at 10% -10%, #cde7ff 10%, transparent 70%),
+        radial-gradient(1000px 500px at 90% 0%, #f5edd1 5%, transparent 75%),
+        linear-gradient(160deg, var(--bg-1), var(--bg-2));
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 2rem 1rem 3rem;
+    }
+
+    .hero {
+      margin-bottom: 1.25rem;
+    }
+
+    h1 {
+      margin: 0 0 0.3rem;
+      font-size: clamp(1.9rem, 3vw, 2.6rem);
+      letter-spacing: 0.02em;
+    }
+
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1rem;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.06);
+      animation: rise-in 0.45s ease-out;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.9rem;
+    }
+
+    @media (min-width: 800px) {
+      .grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .field {
+      border: 1px dashed #b9c7d4;
+      border-radius: 12px;
+      padding: 0.9rem;
+      background: #fbfdff;
+    }
+
+    label {
+      font-weight: 600;
+      display: block;
+      margin-bottom: 0.35rem;
+    }
+
+    input[type="file"] {
+      width: 100%;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.45rem;
+    }
+
+    button {
+      margin-top: 0.8rem;
+      width: 100%;
+      border: 0;
+      border-radius: 12px;
+      padding: 0.82rem 1rem;
+      font-size: 1rem;
+      font-weight: 700;
+      color: #fff;
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--accent), #0078d4);
+      transition: transform 0.14s ease, opacity 0.14s ease;
+    }
+
+    button:hover { transform: translateY(-1px); }
+    button:disabled { cursor: default; opacity: 0.65; transform: none; }
+
+    .status {
+      margin: 0.75rem 0 0;
+      color: var(--muted);
+      min-height: 1.2rem;
+      font-weight: 500;
+    }
+
+    .result {
+      margin-top: 1rem;
+      border: 1px solid #c8dfc9;
+      background: #f3fbf3;
+      border-radius: 12px;
+      padding: 1rem;
+      white-space: pre-wrap;
+      line-height: 1.5;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .result.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @keyframes rise-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <h1>RFP Recommendation Generator</h1>
+      <p class="sub">Upload the RFP and vendor response, then generate an AI recommendation.</p>
+    </header>
+
+    <section class="panel">
+      <div class="grid">
+        <div class="field">
+          <label for="rfpDocument">RFP Document (PDF)</label>
+          <input id="rfpDocument" type="file" accept="application/pdf" />
+        </div>
+
+        <div class="field">
+          <label for="responseDocument">RFP Response Document (PDF)</label>
+          <input id="responseDocument" type="file" accept="application/pdf" />
+        </div>
+      </div>
+
+      <button id="generateBtn">Generate Recommendation</button>
+      <p id="status" class="status"></p>
+      <div id="result" class="result"></div>
+    </section>
+  </div>
+
+  <script>
+    const rfpInput = document.getElementById("rfpDocument");
+    const responseInput = document.getElementById("responseDocument");
+    const generateBtn = document.getElementById("generateBtn");
+    const statusEl = document.getElementById("status");
+    const resultEl = document.getElementById("result");
+
+    generateBtn.addEventListener("click", async () => {
+      resultEl.classList.remove("show");
+      resultEl.textContent = "";
+
+      const rfpFile = rfpInput.files?.[0];
+      const responseFile = responseInput.files?.[0];
+
+      if (!rfpFile || !responseFile) {
+        statusEl.textContent = "Please select both PDF files.";
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("rfp_document", rfpFile);
+      formData.append("response_document", responseFile);
+
+      generateBtn.disabled = true;
+      statusEl.textContent = "Generating recommendation...";
+
+      try {
+        const response = await fetch("/api/recommend", {
+          method: "POST",
+          body: formData,
+        });
+
+        const responseText = await response.text();
+        let payload = null;
+
+        if (responseText) {
+          try {
+            payload = JSON.parse(responseText);
+          } catch {
+            payload = null;
+          }
+        }
+
+        if (!response.ok) {
+          throw new Error(payload?.detail || responseText || "Request failed");
+        }
+
+        statusEl.textContent = "Recommendation generated.";
+        
+        // Display recommendation
+        let resultHtml = `<div>${payload?.recommendation || "No recommendation returned."}</div>`;
+        
+        // Add download link if blob URL is available
+        if (payload?.htmlArtifactUrl) {
+          resultHtml = `<div style="display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center;">
+            <a href="${payload.htmlArtifactUrl}" target="_blank" download style="
+              background: #2e8540;
+              color: #fff;
+              padding: 0.6rem 1.2rem;
+              border-radius: 8px;
+              text-decoration: none;
+              font-weight: 600;
+              white-space: nowrap;
+            ">📥 Download HTML Report</a>
+            <span style="color: #666; font-size: 0.9rem;">Stored in Azure Blob Storage</span>
+          </div>` + resultHtml;
+        }
+        
+        resultEl.innerHTML = resultHtml;
+        resultEl.classList.add("show");
+      } catch (error) {
+        statusEl.textContent = `Error: ${error.message}`;
+      } finally {
+        generateBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

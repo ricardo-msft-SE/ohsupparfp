@@ -1,0 +1,7 @@
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+python-multipart==0.0.20
+pypdf==5.4.0
+azure-ai-projects==2.0.0b4
+azure-identity==1.23.0
+azure-storage-blob==12.23.1

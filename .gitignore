@@ -1,0 +1,17 @@
+.azure/
+.venv/
+
+__pycache__/
+*.py[cod]
+
+*.log
+build_output.log
+deploy_output.txt
+
+Untitled-1.html
+
+.env
+.env.*
+
+.DS_Store
+Thumbs.db
