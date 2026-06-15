@@ -3,30 +3,20 @@ targetScope = 'resourceGroup'
 @description('Deployment location')
 param location string = resourceGroup().location
 
-@description('Container app name')
-param containerAppName string = 'oh-rfp-approver-web'
-
-@description('Container apps environment name')
-param containerAppEnvironmentName string = 'oh-rfp-env'
-
 @description('Log Analytics workspace name')
 param logAnalyticsWorkspaceName string = 'log-oh-rfp'
 
 @description('User assigned managed identity name')
 param managedIdentityName string = 'id-oh-rfp-web'
 
-@description('Container image to deploy')
-param containerImage string
+@description('App Service Plan name (Consumption)')
+param appServicePlanName string = 'plan-oh-rfp'
 
-@description('ACR login server, for example myregistry.azurecr.io')
-param acrServer string
+@description('Function App name')
+param functionAppName string = 'func-oh-rfp-approver'
 
-@description('ACR admin username')
-param acrUsername string
-
-@secure()
-@description('ACR admin password')
-param acrPassword string
+@description('Static Web App name')
+param staticWebAppName string = 'swa-oh-rfp-approver'
 
 @description('Foundry project endpoint URL')
 param aiProjectEndpoint string = 'https://ohsupparfp-resource.services.ai.azure.com/api/projects/ohsupparfp'
@@ -40,8 +30,18 @@ param aiActivityProtocolEndpoint string = 'https://ohsupparfp-resource.services.
 @description('Published Foundry responses API endpoint for the agent application')
 param aiResponsesApiEndpoint string = 'https://ohsupparfp-resource.services.ai.azure.com/api/projects/ohsupparfp/applications/oh-rfpApprover1/protocols/openai/responses?api-version=2025-11-15-preview'
 
-@description('Storage account name for HTML artifacts')
+@description('Azure AI Search service name used to ground recommendations')
+param aiSearchServiceName string = 'aisearch-ohsupparfp'
+
+@description('Azure AI Search index name used to retrieve reference context')
+param aiSearchIndexName string = 'rfp-index'
+
+@description('Storage account name for HTML artifacts and Functions runtime')
 param storageAccountName string = 'stohrfpapprover'
+
+// ---------------------------------------------------------------------------
+// Observability
+// ---------------------------------------------------------------------------
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: logAnalyticsWorkspaceName
@@ -54,10 +54,18 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
 resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: managedIdentityName
   location: location
 }
+
+// ---------------------------------------------------------------------------
+// Storage (artifacts + Functions runtime)
+// ---------------------------------------------------------------------------
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: storageAccountName
@@ -93,23 +101,27 @@ resource storageBlobDataContributorRole 'Microsoft.Authorization/roleAssignments
   }
 }
 
-resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
-  name: containerAppEnvironmentName
+// ---------------------------------------------------------------------------
+// Function App (Linux Consumption)
+// ---------------------------------------------------------------------------
+
+resource appServicePlan 'Microsoft.Web/serverfarms@2022-09-01' = {
+  name: appServicePlanName
   location: location
+  kind: 'linux'
+  sku: {
+    name: 'Y1'
+    tier: 'Dynamic'
+  }
   properties: {
-    appLogsConfiguration: {
-      destination: 'log-analytics'
-      logAnalyticsConfiguration: {
-        customerId: logAnalytics.properties.customerId
-        sharedKey: logAnalytics.listKeys().primarySharedKey
-      }
-    }
+    reserved: true
   }
 }
 
-resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
-  name: containerAppName
+resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
+  name: functionAppName
   location: location
+  kind: 'functionapp,linux'
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
@@ -117,78 +129,97 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
     }
   }
   properties: {
-    managedEnvironmentId: containerAppEnvironment.id
-    configuration: {
-      secrets: [
+    serverFarmId: appServicePlan.id
+    httpsOnly: true
+    siteConfig: {
+      linuxFxVersion: 'Python|3.11'
+      appSettings: [
         {
-          name: 'acr-password'
-          value: acrPassword
+          name: 'AzureWebJobsStorage'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+        }
+        {
+          name: 'FUNCTIONS_EXTENSION_VERSION'
+          value: '~4'
+        }
+        {
+          name: 'FUNCTIONS_WORKER_RUNTIME'
+          value: 'python'
+        }
+        {
+          name: 'WEBSITE_RUN_FROM_PACKAGE'
+          value: '1'
+        }
+        {
+          name: 'AZURE_CLIENT_ID'
+          value: managedIdentity.properties.clientId
+        }
+        {
+          name: 'AZURE_AI_PROJECT_ENDPOINT'
+          value: aiProjectEndpoint
+        }
+        {
+          name: 'AZURE_AI_AGENT_NAME'
+          value: aiAgentName
+        }
+        {
+          name: 'AZURE_AI_ACTIVITY_PROTOCOL_ENDPOINT'
+          value: aiActivityProtocolEndpoint
+        }
+        {
+          name: 'AZURE_AI_RESPONSES_API_ENDPOINT'
+          value: aiResponsesApiEndpoint
+        }
+        {
+          name: 'AZURE_AI_SEARCH_ENDPOINT'
+          value: 'https://${aiSearchServiceName}.search.windows.net'
+        }
+        {
+          name: 'AZURE_AI_SEARCH_INDEX_NAME'
+          value: aiSearchIndexName
+        }
+        {
+          name: 'AZURE_STORAGE_ACCOUNT_NAME'
+          value: storageAccountName
+        }
+        {
+          name: 'AZURE_STORAGE_CONTAINER_NAME'
+          value: 'html-artifacts'
         }
       ]
-      registries: [
-        {
-          server: acrServer
-          username: acrUsername
-          passwordSecretRef: 'acr-password'
-        }
-      ]
-      ingress: {
-        external: true
-        targetPort: 8000
-        transport: 'auto'
-      }
-      activeRevisionsMode: 'Single'
-    }
-    template: {
-      containers: [
-        {
-          name: 'web'
-          image: containerImage
-          env: [
-            {
-              name: 'AZURE_AI_PROJECT_ENDPOINT'
-              value: aiProjectEndpoint
-            }
-            {
-              name: 'AZURE_AI_AGENT_NAME'
-              value: aiAgentName
-            }
-            {
-              name: 'AZURE_CLIENT_ID'
-              value: managedIdentity.properties.clientId
-            }
-            {
-              name: 'AZURE_AI_ACTIVITY_PROTOCOL_ENDPOINT'
-              value: aiActivityProtocolEndpoint
-            }
-            {
-              name: 'AZURE_AI_RESPONSES_API_ENDPOINT'
-              value: aiResponsesApiEndpoint
-            }
-            {
-              name: 'AZURE_STORAGE_ACCOUNT_NAME'
-              value: storageAccountName
-            }
-            {
-              name: 'AZURE_STORAGE_CONTAINER_NAME'
-              value: 'html-artifacts'
-            }
-          ]
-          resources: {
-            cpu: json('0.5')
-            memory: '1Gi'
-          }
-        }
-      ]
-      scale: {
-        minReplicas: 1
-        maxReplicas: 2
-      }
     }
   }
 }
 
-output containerAppUrl string = 'https://${containerApp.properties.configuration.ingress.fqdn}'
+// ---------------------------------------------------------------------------
+// Static Web App (free tier, linked to Function App as backend)
+// ---------------------------------------------------------------------------
+
+resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
+  name: staticWebAppName
+  location: location
+  sku: {
+    name: 'Free'
+    tier: 'Free'
+  }
+  properties: {}
+}
+
+resource swaLinkedBackend 'Microsoft.Web/staticSites/linkedBackends@2022-09-01' = {
+  parent: staticWebApp
+  name: 'backend'
+  properties: {
+    backendResourceId: functionApp.id
+    region: location
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Outputs
+// ---------------------------------------------------------------------------
+
+output functionAppUrl string = 'https://${functionApp.properties.defaultHostName}'
+output staticWebAppUrl string = 'https://${staticWebApp.properties.defaultHostname}'
 output managedIdentityPrincipalId string = managedIdentity.properties.principalId
 output storageAccountName string = storageAccount.name
 output blobContainerName string = 'html-artifacts'

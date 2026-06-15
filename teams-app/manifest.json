@@ -10,13 +10,13 @@
   },
   "developer": {
     "name": "OHSUPP ARFP",
-    "websiteUrl": "https://oh-rfp-approver-web.agreeablefield-acc5866b.eastus2.azurecontainerapps.io/",
-    "privacyUrl": "https://oh-rfp-approver-web.agreeablefield-acc5866b.eastus2.azurecontainerapps.io/",
-    "termsOfUseUrl": "https://oh-rfp-approver-web.agreeablefield-acc5866b.eastus2.azurecontainerapps.io/"
+    "websiteUrl": "https://swa-oh-rfp-approver.azurestaticapps.net/",
+    "privacyUrl": "https://swa-oh-rfp-approver.azurestaticapps.net/",
+    "termsOfUseUrl": "https://swa-oh-rfp-approver.azurestaticapps.net/"
   },
   "description": {
     "short": "Open the RFP Approver Foundry web UI in Teams.",
-    "full": "Channel tab app that links directly to the deployed RFP Approver web UI hosted on Azure Container Apps."
+    "full": "Channel tab app that links directly to the deployed RFP Approver web UI hosted on Azure Static Web Apps."
   },
   "icons": {
     "color": "icons/color.png",
@@ -25,7 +25,7 @@
   "accentColor": "#005EA2",
   "configurableTabs": [
     {
-      "configurationUrl": "https://oh-rfp-approver-web.agreeablefield-acc5866b.eastus2.azurecontainerapps.io/static/teams/config.html",
+      "configurationUrl": "https://swa-oh-rfp-approver.azurestaticapps.net/teams/config.html",
       "canUpdateConfiguration": true,
       "scopes": [
         "team"
@@ -39,7 +39,7 @@
     "identity"
   ],
   "validDomains": [
-    "oh-rfp-approver-web.agreeablefield-acc5866b.eastus2.azurecontainerapps.io"
+    "swa-oh-rfp-approver.azurestaticapps.net"
   ],
   "defaultInstallScope": "team"
 }

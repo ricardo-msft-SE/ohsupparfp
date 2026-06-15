@@ -5,6 +5,7 @@ from typing import Any
 
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
+from azure.search.documents import SearchClient
 
 
 class FoundryAgentClient:
@@ -14,9 +15,23 @@ class FoundryAgentClient:
         self.managed_identity_client_id = os.environ.get("AZURE_CLIENT_ID")
         self.responses_api_endpoint = os.environ.get("AZURE_AI_RESPONSES_API_ENDPOINT")
         self.activity_protocol_endpoint = os.environ.get("AZURE_AI_ACTIVITY_PROTOCOL_ENDPOINT")
+        self.search_endpoint = os.environ.get("AZURE_AI_SEARCH_ENDPOINT")
+        self.search_index_name = os.environ.get("AZURE_AI_SEARCH_INDEX_NAME")
+        self.search_top_k = int(os.environ.get("AZURE_AI_SEARCH_TOP_K", "5"))
+
+        self.search_client = None
+        if self.search_endpoint and self.search_index_name:
+            self.search_client = SearchClient(
+                endpoint=self.search_endpoint,
+                index_name=self.search_index_name,
+                credential=DefaultAzureCredential(
+                    managed_identity_client_id=self.managed_identity_client_id
+                ),
+            )
 
     def generate_recommendation(self, rfp_text: str, response_text: str) -> str:
-        prompt = self._build_user_message(rfp_text, response_text)
+        search_context = self._fetch_search_context(rfp_text)
+        prompt = self._build_user_message(rfp_text, response_text, search_context)
 
         if self.responses_api_endpoint:
             try:
@@ -59,14 +74,72 @@ class FoundryAgentClient:
                     # Conversation cleanup failure should not fail user requests.
                     pass
 
-    def _build_user_message(self, rfp_text: str, response_text: str) -> str:
+    def _build_user_message(self, rfp_text: str, response_text: str, search_context: str | None) -> str:
+        context_block = ""
+        if search_context:
+            context_block = (
+                "ADDITIONAL REFERENCE CONTEXT FROM AZURE AI SEARCH:\n"
+                f"{search_context}\n\n"
+            )
+
         return (
-            "Evaluate the vendor response against the RFP and provide your recommendation.\n\n"
+            "Evaluate the vendor response against the RFP and provide your recommendation.\n"
+            "Use the additional reference context when it is relevant and cite which snippets influenced your recommendation.\n\n"
+            f"{context_block}"
             "RFP DOCUMENT:\n"
             f"{rfp_text}\n\n"
             "VENDOR RESPONSE DOCUMENT:\n"
             f"{response_text}"
         )
+
+    def _fetch_search_context(self, rfp_text: str) -> str | None:
+        if not self.search_client:
+            return None
+
+        query = self._build_search_query(rfp_text)
+        if not query:
+            return None
+
+        try:
+            results = self.search_client.search(search_text=query, top=self.search_top_k)
+            chunks: list[str] = []
+
+            for index, result in enumerate(results, start=1):
+                source = (
+                    result.get("title")
+                    or result.get("source")
+                    or result.get("sourcefile")
+                    or result.get("metadata_storage_name")
+                    or f"document-{index}"
+                )
+
+                text = (
+                    result.get("content")
+                    or result.get("chunk")
+                    or result.get("text")
+                    or result.get("description")
+                    or ""
+                )
+                if not isinstance(text, str):
+                    continue
+
+                snippet = text.strip().replace("\n", " ")
+                if not snippet:
+                    continue
+
+                chunks.append(f"[{index}] {source}: {snippet[:1200]}")
+
+            if not chunks:
+                return None
+
+            return "\n".join(chunks)
+        except Exception:
+            # Search is optional context. Fail open and continue with the base prompt.
+            return None
+
+    def _build_search_query(self, rfp_text: str) -> str:
+        compact = " ".join(rfp_text.split())
+        return compact[:1200]
 
     def _invoke_via_responses_endpoint(self, prompt: str) -> str:
         with DefaultAzureCredential(managed_identity_client_id=self.managed_identity_client_id) as credential:

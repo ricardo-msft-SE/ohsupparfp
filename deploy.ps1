@@ -6,22 +6,25 @@ param(
   [string]$Location = "eastus2",
 
   [Parameter(Mandatory = $false)]
-  [string]$ContainerAppName = "oh-rfp-approver-web",
+  [string]$FunctionAppName = "func-oh-rfp-approver",
 
   [Parameter(Mandatory = $false)]
-  [string]$EnvName = "oh-rfp-env",
-
-  [Parameter(Mandatory = $false)]
-  [string]$AcrName = "",
-
-  [Parameter(Mandatory = $false)]
-  [string]$Image = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest",
+  [string]$StaticWebAppName = "swa-oh-rfp-approver",
 
   [Parameter(Mandatory = $false)]
   [string]$FoundryResourceGroup = "rg-ohsupparfp",
 
   [Parameter(Mandatory = $false)]
-  [string]$FoundryResourceName = "ohsupparfp-resource"
+  [string]$FoundryResourceName = "ohsupparfp-resource",
+
+  [Parameter(Mandatory = $false)]
+  [string]$SearchResourceGroup = "rg-ohsupparfp",
+
+  [Parameter(Mandatory = $false)]
+  [string]$SearchServiceName = "aisearch-ohsupparfp",
+
+  [Parameter(Mandatory = $false)]
+  [string]$SearchIndexName = "rfp-index"
 )
 
 $ErrorActionPreference = "Stop"
@@ -41,11 +44,11 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "Registering required Azure resource providers..."
 $requiredProviders = @(
-  "Microsoft.ContainerRegistry",
-  "Microsoft.App",
+  "Microsoft.Web",
   "Microsoft.OperationalInsights",
   "Microsoft.ManagedIdentity",
-  "Microsoft.CognitiveServices"
+  "Microsoft.CognitiveServices",
+  "Microsoft.Storage"
 )
 
 foreach ($provider in $requiredProviders) {
@@ -55,51 +58,23 @@ foreach ($provider in $requiredProviders) {
   }
 }
 
-if (-not $AcrName) {
-  $suffix = Get-Random -Minimum 1000 -Maximum 9999
-  $AcrName = "acrohsupparfp$suffix"
-}
-
-Write-Host "Creating Azure Container Registry if needed..."
-$acrExists = az acr show --name $AcrName --resource-group $ResourceGroup --query name -o tsv 2>$null
-if (-not $acrExists) {
-  az acr create --name $AcrName --resource-group $ResourceGroup --location $Location --sku Basic --admin-enabled true | Out-Null
-  if ($LASTEXITCODE -ne 0) {
-    throw "Failed to create Azure Container Registry '$AcrName'."
-  }
-}
-
-$tag = Get-Date -Format "yyyyMMddHHmmss"
-$repository = "oh-rfp-approver"
-$acrLoginServer = az acr show --name $AcrName --resource-group $ResourceGroup --query loginServer -o tsv
-if ($LASTEXITCODE -ne 0 -or -not $acrLoginServer) {
-  throw "Failed to resolve ACR login server for '$AcrName'."
-}
-$image = "${acrLoginServer}/${repository}:$tag"
-
-Write-Host "Building and pushing image to ACR..."
-az acr build --registry $AcrName --image "${repository}:$tag" .
-if ($LASTEXITCODE -ne 0) {
-  throw "Failed to build and push image to ACR '$AcrName'."
-}
-
-$acrUsername = az acr credential show --name $AcrName --query username -o tsv
-if ($LASTEXITCODE -ne 0 -or -not $acrUsername) {
-  throw "Failed to get ACR username for '$AcrName'."
-}
-$acrPassword = az acr credential show --name $AcrName --query "passwords[0].value" -o tsv
-if ($LASTEXITCODE -ne 0 -or -not $acrPassword) {
-  throw "Failed to get ACR password for '$AcrName'."
-}
-
 Write-Host "Deploying infrastructure from Bicep..."
 az deployment group create `
   --resource-group $ResourceGroup `
   --template-file ./infra/main.bicep `
-  --parameters location=$Location containerAppName=$ContainerAppName containerAppEnvironmentName=$EnvName containerImage=$image acrServer=$acrLoginServer acrUsername=$acrUsername acrPassword=$acrPassword
+  --parameters location=$Location functionAppName=$FunctionAppName staticWebAppName=$StaticWebAppName aiSearchServiceName=$SearchServiceName aiSearchIndexName=$SearchIndexName
 if ($LASTEXITCODE -ne 0) {
   throw "Bicep deployment failed for resource group '$ResourceGroup'."
 }
+
+Write-Host "Publishing Azure Functions app code..."
+Push-Location ./api
+func azure functionapp publish $FunctionAppName --python
+if ($LASTEXITCODE -ne 0) {
+  Pop-Location
+  throw "Failed to publish Function App '$FunctionAppName'. Make sure Azure Functions Core Tools is installed."
+}
+Pop-Location
 
 Write-Host "Getting managed identity principal ID from deployment output..."
 $principalId = az deployment group show `
@@ -132,11 +107,59 @@ if ($LASTEXITCODE -ne 0) {
   throw "Failed to assign 'Azure AI User' role to managed identity."
 }
 
-Write-Host "Getting public app URL..."
-$appUrl = az containerapp show --resource-group $ResourceGroup --name $ContainerAppName --query "properties.configuration.ingress.fqdn" -o tsv
-if ($LASTEXITCODE -ne 0 -or -not $appUrl) {
-  throw "Deployment completed but failed to fetch Container App public URL."
+$searchResourceId = az search service show `
+  --resource-group $SearchResourceGroup `
+  --name $SearchServiceName `
+  --query id -o tsv
+if ($LASTEXITCODE -ne 0 -or -not $searchResourceId) {
+  throw "Failed to resolve Azure AI Search service '$SearchServiceName' in '$SearchResourceGroup'."
 }
-Write-Host "Done. App URL: https://$appUrl"
+
+Write-Host "Assigning Search Index Data Reader role to app managed identity on Azure AI Search..."
+az role assignment create `
+  --assignee-object-id $principalId `
+  --assignee-principal-type ServicePrincipal `
+  --role "Search Index Data Reader" `
+  --scope $searchResourceId | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  throw "Failed to assign 'Search Index Data Reader' role to managed identity."
+}
+
+Write-Host "Linking Static Web App backend to Function App..."
+$functionAppId = az functionapp show --resource-group $ResourceGroup --name $FunctionAppName --query id -o tsv
+if ($LASTEXITCODE -ne 0 -or -not $functionAppId) {
+  throw "Failed to resolve Function App resource ID."
+}
+
+az staticwebapp backends link `
+  --name $StaticWebAppName `
+  --resource-group $ResourceGroup `
+  --backend-resource-id $functionAppId `
+  --backend-region $Location | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  throw "Failed to link Static Web App backend to Function App."
+}
+
+Write-Host "Getting Static Web App deployment token..."
+$swaToken = az staticwebapp secrets list --name $StaticWebAppName --resource-group $ResourceGroup --query "properties.apiKey" -o tsv
+if ($LASTEXITCODE -ne 0 -or -not $swaToken) {
+  throw "Failed to retrieve Static Web App deployment token."
+}
+
+Write-Host "Deploying frontend to Static Web App..."
+Push-Location ./frontend
+npx @azure/static-web-apps-cli deploy . --deployment-token $swaToken --env production
+if ($LASTEXITCODE -ne 0) {
+  Pop-Location
+  throw "Failed to deploy frontend to Static Web App. Ensure Node.js and swa CLI are available (npx will install if needed)."
+}
+Pop-Location
+
+Write-Host "Getting public app URL..."
+$swaHostName = az staticwebapp show --resource-group $ResourceGroup --name $StaticWebAppName --query "defaultHostname" -o tsv
+if ($LASTEXITCODE -ne 0 -or -not $swaHostName) {
+  throw "Deployment completed but failed to fetch Static Web App URL."
+}
+Write-Host "Done. App URL: https://$swaHostName"
 
 Pop-Location

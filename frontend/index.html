@@ -215,10 +215,10 @@
         }
 
         statusEl.textContent = "Recommendation generated.";
-        
+
         // Display recommendation
         let resultHtml = `<div>${payload?.recommendation || "No recommendation returned."}</div>`;
-        
+
         // Add download link if blob URL is available
         if (payload?.htmlArtifactUrl) {
           resultHtml = `<div style="display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center;">
@@ -230,11 +230,11 @@
               text-decoration: none;
               font-weight: 600;
               white-space: nowrap;
-            ">📥 Download HTML Report</a>
+            ">&#128229; Download HTML Report</a>
             <span style="color: #666; font-size: 0.9rem;">Stored in Azure Blob Storage</span>
           </div>` + resultHtml;
         }
-        
+
         resultEl.innerHTML = resultHtml;
         resultEl.classList.add("show");
       } catch (error) {

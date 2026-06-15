@@ -77,7 +77,8 @@
   </main>
 
   <script>
-    const APP_URL = "https://oh-rfp-approver-web.agreeablefield-acc5866b.eastus2.azurecontainerapps.io/";
+    // Dynamically resolve URL so this config page works regardless of host (SWA or other)
+    const APP_URL = window.location.origin + "/";
 
     document.getElementById("appUrl").textContent = APP_URL;
 
