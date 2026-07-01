@@ -1,248 +1,672 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RFP Recommendation</title>
-  <style>
-    :root {
-      --bg-1: #e6f2ff;
-      --bg-2: #f7f4ea;
-      --ink: #1f2a35;
-      --accent: #005ea2;
-      --accent-2: #2e8540;
-      --card: #ffffff;
-      --muted: #5f6b76;
-      --border: #d8dee4;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RFP Compliance Chat</title>
+    <script src="https://res.cdn.office.net/teams-js/2.19.0/js/microsoft.teams.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-    * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
 
-    body {
-      margin: 0;
-      font-family: "Segoe UI", "Trebuchet MS", sans-serif;
-      color: var(--ink);
-      background:
-        radial-gradient(1200px 400px at 10% -10%, #cde7ff 10%, transparent 70%),
-        radial-gradient(1000px 500px at 90% 0%, #f5edd1 5%, transparent 75%),
-        linear-gradient(160deg, var(--bg-1), var(--bg-2));
-      min-height: 100vh;
-    }
+        .header {
+            background: linear-gradient(135deg, #0078d4 0%, #005a9e 100%);
+            color: white;
+            padding: 16px 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
 
-    .container {
-      max-width: 980px;
-      margin: 0 auto;
-      padding: 2rem 1rem 3rem;
-    }
+        .header h1 {
+            font-size: 18px;
+            font-weight: 600;
+        }
 
-    .hero {
-      margin-bottom: 1.25rem;
-    }
+        .header button {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
 
-    h1 {
-      margin: 0 0 0.3rem;
-      font-size: clamp(1.9rem, 3vw, 2.6rem);
-      letter-spacing: 0.02em;
-    }
+        .header button:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
 
-    .sub {
-      margin: 0;
-      color: var(--muted);
-      font-size: 1.05rem;
-    }
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
 
-    .panel {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 1rem;
-      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.06);
-      animation: rise-in 0.45s ease-out;
-    }
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
 
-    .grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 0.9rem;
-    }
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
 
-    @media (min-width: 800px) {
-      .grid {
-        grid-template-columns: 1fr 1fr;
-      }
-    }
+        .message {
+            display: flex;
+            margin-bottom: 8px;
+            animation: slideIn 0.3s ease-out;
+        }
 
-    .field {
-      border: 1px dashed #b9c7d4;
-      border-radius: 12px;
-      padding: 0.9rem;
-      background: #fbfdff;
-    }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
 
-    label {
-      font-weight: 600;
-      display: block;
-      margin-bottom: 0.35rem;
-    }
+        .message.user {
+            justify-content: flex-end;
+        }
 
-    input[type="file"] {
-      width: 100%;
-      background: #fff;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0.45rem;
-    }
+        .message.assistant {
+            justify-content: flex-start;
+        }
 
-    button {
-      margin-top: 0.8rem;
-      width: 100%;
-      border: 0;
-      border-radius: 12px;
-      padding: 0.82rem 1rem;
-      font-size: 1rem;
-      font-weight: 700;
-      color: #fff;
-      cursor: pointer;
-      background: linear-gradient(135deg, var(--accent), #0078d4);
-      transition: transform 0.14s ease, opacity 0.14s ease;
-    }
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 8px;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            font-size: 14px;
+            line-height: 1.4;
+        }
 
-    button:hover { transform: translateY(-1px); }
-    button:disabled { cursor: default; opacity: 0.65; transform: none; }
+        .message.user .message-content {
+            background: #0078d4;
+            color: white;
+        }
 
-    .status {
-      margin: 0.75rem 0 0;
-      color: var(--muted);
-      min-height: 1.2rem;
-      font-weight: 500;
-    }
+        .message.assistant .message-content {
+            background: #e8e8e8;
+            color: #333;
+        }
 
-    .result {
-      margin-top: 1rem;
-      border: 1px solid #c8dfc9;
-      background: #f3fbf3;
-      border-radius: 12px;
-      padding: 1rem;
-      white-space: pre-wrap;
-      line-height: 1.5;
-      opacity: 0;
-      transform: translateY(6px);
-      transition: opacity 0.2s ease, transform 0.2s ease;
-    }
+        .loading {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #666;
+            font-size: 14px;
+        }
 
-    .result.show {
-      opacity: 1;
-      transform: translateY(0);
-    }
+        .loading-dots {
+            display: flex;
+            gap: 4px;
+        }
 
-    @keyframes rise-in {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-  </style>
+        .loading-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #0078d4;
+            animation: pulse 1.4s infinite;
+        }
+
+        .loading-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .loading-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 0.3;
+            }
+            50% {
+                opacity: 1;
+            }
+        }
+
+        .input-area {
+            padding: 16px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .input-controls {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        .file-upload-wrapper {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .file-upload-btn {
+            background: #f3f2f1;
+            border: 1px solid #d0cece;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #333;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .file-upload-btn:hover {
+            background: #e1dfdd;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .input-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .input-wrapper textarea {
+            padding: 12px;
+            border: 1px solid #d0cece;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: none;
+            max-height: 100px;
+            min-height: 40px;
+        }
+
+        .input-wrapper textarea:focus {
+            outline: none;
+            border-color: #0078d4;
+            box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.1);
+        }
+
+        .file-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .file-item {
+            background: #f3f2f1;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .file-item button {
+            background: none;
+            border: none;
+            color: #d13438;
+            cursor: pointer;
+            font-weight: bold;
+            padding: 0;
+            font-size: 14px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .send-btn {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 8px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .send-btn:hover:not(:disabled) {
+            background: #006ac1;
+        }
+
+        .send-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .download-btn {
+            background: #107c10;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.2s;
+            margin-top: 12px;
+            display: block;
+        }
+
+        .download-btn:hover {
+            background: #0f6e0f;
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #999;
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .empty-state h2 {
+            font-size: 18px;
+            margin-bottom: 12px;
+            color: #333;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+            max-width: 400px;
+            line-height: 1.6;
+        }
+
+        .error-message {
+            background: #fde7e9;
+            color: #d13438;
+            padding: 12px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        .success-message {
+            background: #dffcf0;
+            color: #107c10;
+            padding: 12px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        @media (max-width: 600px) {
+            .message-content {
+                max-width: 90%;
+            }
+
+            .input-controls {
+                flex-wrap: wrap;
+            }
+
+            .button-group {
+                width: 100%;
+            }
+
+            .send-btn {
+                flex: 1;
+            }
+        }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <header class="hero">
-      <h1>RFP Recommendation Generator</h1>
-      <p class="sub">Upload the RFP and vendor response, then generate an AI recommendation.</p>
-    </header>
+    <div class="header">
+        <h1>RFP Compliance Review</h1>
+        <button id="newChatBtn" onclick="startNewChat()">New Chat</button>
+    </div>
 
-    <section class="panel">
-      <div class="grid">
-        <div class="field">
-          <label for="rfpDocument">RFP Document (PDF)</label>
-          <input id="rfpDocument" type="file" accept="application/pdf" />
+    <div class="container">
+        <div class="chat-area">
+            <div id="messages" class="messages">
+                <div class="empty-state">
+                    <h2>Welcome to RFP Compliance Review</h2>
+                    <p>Upload RFP and Response documents to start. Our AI agent will evaluate compliance against your policy requirements.</p>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <div id="errorContainer"></div>
+                <div class="input-controls">
+                    <div class="file-upload-wrapper">
+                        <button class="file-upload-btn" onclick="document.getElementById('fileInput').click()">
+                            📎 Upload Document
+                        </button>
+                        <input 
+                            id="fileInput" 
+                            type="file" 
+                            multiple 
+                            accept=".pdf,.docx"
+                            onchange="handleFileSelect(event)"
+                        >
+                    </div>
+                </div>
+
+                <div id="fileList" class="file-list"></div>
+
+                <div class="input-wrapper">
+                    <textarea 
+                        id="messageInput" 
+                        placeholder="Ask your question or describe what you need to evaluate..."
+                        onkeypress="handleKeyPress(event)"
+                    ></textarea>
+                    <div class="button-group">
+                        <button class="send-btn" id="sendBtn" onclick="sendMessage()" disabled>Send</button>
+                    </div>
+                </div>
+            </div>
         </div>
+    </div>
 
-        <div class="field">
-          <label for="responseDocument">RFP Response Document (PDF)</label>
-          <input id="responseDocument" type="file" accept="application/pdf" />
-        </div>
-      </div>
+    <script>
+        // State management
+        let currentConversationId = null;
+        let selectedFiles = [];
+        let isLoading = false;
 
-      <button id="generateBtn">Generate Recommendation</button>
-      <p id="status" class="status"></p>
-      <div id="result" class="result"></div>
-    </section>
-  </div>
+        // Initialize
+        async function initialize() {
+            try {
+                // Try to get Teams context
+                await microsoftTeams.app.initialize();
+                const context = await microsoftTeams.app.getContext();
+                console.log("Teams context:", context);
+            } catch (e) {
+                console.log("Not running in Teams or Teams initialization skipped:", e);
+            }
 
-  <script>
-    const rfpInput = document.getElementById("rfpDocument");
-    const responseInput = document.getElementById("responseDocument");
-    const generateBtn = document.getElementById("generateBtn");
-    const statusEl = document.getElementById("status");
-    const resultEl = document.getElementById("result");
+            // Load existing conversation if available
+            const savedConversationId = sessionStorage.getItem('conversationId');
+            if (savedConversationId) {
+                currentConversationId = savedConversationId;
+                await loadConversationHistory();
+            } else {
+                await startNewChat();
+            }
 
-    generateBtn.addEventListener("click", async () => {
-      resultEl.classList.remove("show");
-      resultEl.textContent = "";
+            // Auto-resize textarea
+            const textarea = document.getElementById('messageInput');
+            textarea.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 100) + 'px';
+            });
 
-      const rfpFile = rfpInput.files?.[0];
-      const responseFile = responseInput.files?.[0];
-
-      if (!rfpFile || !responseFile) {
-        statusEl.textContent = "Please select both PDF files.";
-        return;
-      }
-
-      const formData = new FormData();
-      formData.append("rfp_document", rfpFile);
-      formData.append("response_document", responseFile);
-
-      generateBtn.disabled = true;
-      statusEl.textContent = "Generating recommendation...";
-
-      try {
-        const response = await fetch("/api/recommend", {
-          method: "POST",
-          body: formData,
-        });
-
-        const responseText = await response.text();
-        let payload = null;
-
-        if (responseText) {
-          try {
-            payload = JSON.parse(responseText);
-          } catch {
-            payload = null;
-          }
+            updateSendButtonState();
         }
 
-        if (!response.ok) {
-          throw new Error(payload?.detail || responseText || "Request failed");
+        async function startNewChat() {
+            try {
+                selectedFiles = [];
+                updateFileList();
+                document.getElementById('messageInput').value = '';
+                document.getElementById('messages').innerHTML = `
+                    <div class="empty-state">
+                        <h2>New Conversation</h2>
+                        <p>Upload RFP and Response documents to start.</p>
+                    </div>
+                `;
+
+                const response = await fetch('/api/conversations/new', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) throw new Error('Failed to create conversation');
+
+                const data = await response.json();
+                currentConversationId = data.conversationId;
+                sessionStorage.setItem('conversationId', currentConversationId);
+                
+                clearErrors();
+            } catch (error) {
+                showError('Failed to start new chat: ' + error.message);
+            }
         }
 
-        statusEl.textContent = "Recommendation generated.";
-
-        // Display recommendation
-        let resultHtml = `<div>${payload?.recommendation || "No recommendation returned."}</div>`;
-
-        // Add download link if blob URL is available
-        if (payload?.htmlArtifactUrl) {
-          resultHtml = `<div style="display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center;">
-            <a href="${payload.htmlArtifactUrl}" target="_blank" download style="
-              background: #2e8540;
-              color: #fff;
-              padding: 0.6rem 1.2rem;
-              border-radius: 8px;
-              text-decoration: none;
-              font-weight: 600;
-              white-space: nowrap;
-            ">&#128229; Download HTML Report</a>
-            <span style="color: #666; font-size: 0.9rem;">Stored in Azure Blob Storage</span>
-          </div>` + resultHtml;
+        function handleFileSelect(event) {
+            const files = event.target.files;
+            for (let file of files) {
+                if (file.name.toLowerCase().endsWith('.pdf') || file.name.toLowerCase().endsWith('.docx')) {
+                    selectedFiles.push(file);
+                }
+            }
+            updateFileList();
+            document.getElementById('fileInput').value = ''; // Reset input
+            updateSendButtonState();
         }
 
-        resultEl.innerHTML = resultHtml;
-        resultEl.classList.add("show");
-      } catch (error) {
-        statusEl.textContent = `Error: ${error.message}`;
-      } finally {
-        generateBtn.disabled = false;
-      }
-    });
-  </script>
+        function updateFileList() {
+            const fileListDiv = document.getElementById('fileList');
+            fileListDiv.innerHTML = selectedFiles.map((file, index) => `
+                <div class="file-item">
+                    <span>${file.name}</span>
+                    <button onclick="removeFile(${index})">×</button>
+                </div>
+            `).join('');
+        }
+
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            updateFileList();
+            updateSendButtonState();
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && event.ctrlKey) {
+                sendMessage();
+            }
+        }
+
+        function updateSendButtonState() {
+            const message = document.getElementById('messageInput').value.trim();
+            const sendBtn = document.getElementById('sendBtn');
+            sendBtn.disabled = isLoading || (!message && selectedFiles.length === 0);
+        }
+
+        async function sendMessage() {
+            const messageText = document.getElementById('messageInput').value.trim();
+            
+            if (!messageText && selectedFiles.length === 0) {
+                showError('Please enter a message or upload a file');
+                return;
+            }
+
+            if (!currentConversationId) {
+                showError('No active conversation. Please start a new chat.');
+                return;
+            }
+
+            isLoading = true;
+            updateSendButtonState();
+            clearErrors();
+
+            try {
+                // Remove empty state if present
+                const emptyState = document.querySelector('.empty-state');
+                if (emptyState) emptyState.remove();
+
+                // Extract document texts
+                let fullMessage = messageText;
+                if (selectedFiles.length > 0) {
+                    const docTexts = [];
+                    for (let file of selectedFiles) {
+                        const text = await extractDocumentText(file);
+                        docTexts.push(`--- Document: ${file.name} ---\n${text}`);
+                    }
+                    fullMessage = docTexts.join('\n\n') + (messageText ? `\n\nUser Question: ${messageText}` : '');
+                    selectedFiles = [];
+                    updateFileList();
+                }
+
+                // Add user message to chat
+                addMessage('user', messageText || `Uploaded ${selectedFiles.length} document(s)`);
+
+                // Show loading indicator
+                const loadingId = addLoading();
+
+                // Send to API
+                const response = await fetch(`/api/conversations/${currentConversationId}/messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: fullMessage })
+                });
+
+                removeLoading(loadingId);
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Failed to process message');
+                }
+
+                const data = await response.json();
+                addMessage('assistant', data.agentResponse);
+
+                // If HTML artifact was generated, show download button
+                if (data.htmlUrl) {
+                    const messageElement = document.querySelector('.messages > .message:last-child');
+                    const downloadBtn = document.createElement('button');
+                    downloadBtn.className = 'download-btn';
+                    downloadBtn.textContent = '📥 Download Compliance Summary';
+                    downloadBtn.onclick = () => window.location.href = data.htmlUrl;
+                    messageElement.querySelector('.message-content').appendChild(downloadBtn);
+                }
+
+                document.getElementById('messageInput').value = '';
+                document.getElementById('messageInput').style.height = 'auto';
+            } catch (error) {
+                showError('Error: ' + error.message);
+            } finally {
+                isLoading = false;
+                updateSendButtonState();
+            }
+        }
+
+        async function extractDocumentText(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch('/api/extract-document', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) throw new Error(`Failed to extract ${file.name}`);
+            const data = await response.json();
+            return data.text;
+        }
+
+        function addMessage(role, content) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = content;
+            
+            messageDiv.appendChild(contentDiv);
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function addLoading() {
+            const messagesDiv = document.getElementById('messages');
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'message assistant loading-wrapper';
+            loadingDiv.id = 'loading-' + Date.now();
+            loadingDiv.innerHTML = `
+                <div class="message-content">
+                    <div class="loading">
+                        Analyzing documents
+                        <div class="loading-dots">
+                            <div class="loading-dot"></div>
+                            <div class="loading-dot"></div>
+                            <div class="loading-dot"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            messagesDiv.appendChild(loadingDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            return loadingDiv.id;
+        }
+
+        function removeLoading(id) {
+            const element = document.getElementById(id);
+            if (element) element.remove();
+        }
+
+        async function loadConversationHistory() {
+            try {
+                const response = await fetch(`/api/conversations/${currentConversationId}`);
+                if (!response.ok) return;
+
+                const data = await response.json();
+                document.getElementById('messages').innerHTML = '';
+
+                for (let msg of data.messages) {
+                    addMessage(msg.role, msg.content);
+                }
+            } catch (error) {
+                console.error('Failed to load conversation history:', error);
+            }
+        }
+
+        function showError(message) {
+            const container = document.getElementById('errorContainer');
+            container.innerHTML = `<div class="error-message">${message}</div>`;
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 5000);
+        }
+
+        function clearErrors() {
+            document.getElementById('errorContainer').innerHTML = '';
+        }
+
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', initialize);
+    </script>
 </body>
 </html>

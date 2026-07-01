@@ -12,6 +12,18 @@ param(
   [string]$StaticWebAppName = "swa-oh-rfp-approver",
 
   [Parameter(Mandatory = $false)]
+  [string]$LogAnalyticsWorkspaceName = "log-oh-rfp",
+
+  [Parameter(Mandatory = $false)]
+  [string]$ManagedIdentityName = "id-oh-rfp-web",
+
+  [Parameter(Mandatory = $false)]
+  [string]$AppServicePlanName = "plan-oh-rfp",
+
+  [Parameter(Mandatory = $false)]
+  [string]$StorageAccountName = "stohrfpapprover",
+
+  [Parameter(Mandatory = $false)]
   [string]$FoundryResourceGroup = "rg-ohsupparfp",
 
   [Parameter(Mandatory = $false)]
@@ -62,14 +74,14 @@ Write-Host "Deploying infrastructure from Bicep..."
 az deployment group create `
   --resource-group $ResourceGroup `
   --template-file ./infra/main.bicep `
-  --parameters location=$Location functionAppName=$FunctionAppName staticWebAppName=$StaticWebAppName aiSearchServiceName=$SearchServiceName aiSearchIndexName=$SearchIndexName
+  --parameters location=$Location logAnalyticsWorkspaceName=$LogAnalyticsWorkspaceName managedIdentityName=$ManagedIdentityName appServicePlanName=$AppServicePlanName functionAppName=$FunctionAppName staticWebAppName=$StaticWebAppName storageAccountName=$StorageAccountName aiSearchServiceName=$SearchServiceName aiSearchIndexName=$SearchIndexName
 if ($LASTEXITCODE -ne 0) {
   throw "Bicep deployment failed for resource group '$ResourceGroup'."
 }
 
 Write-Host "Publishing Azure Functions app code..."
 Push-Location ./api
-func azure functionapp publish $FunctionAppName --python
+func azure functionapp publish $FunctionAppName --python --build local
 if ($LASTEXITCODE -ne 0) {
   Pop-Location
   throw "Failed to publish Function App '$FunctionAppName'. Make sure Azure Functions Core Tools is installed."

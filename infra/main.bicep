@@ -76,6 +76,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   }
   properties: {
     accessTier: 'Hot'
+    allowSharedKeyAccess: true
     allowBlobPublicAccess: false
     minimumTlsVersion: 'TLS1_2'
   }
@@ -96,6 +97,26 @@ resource storageBlobDataContributorRole 'Microsoft.Authorization/roleAssignments
   name: guid(storageAccount.id, managedIdentity.id, 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+    principalId: managedIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource storageQueueDataContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: storageAccount
+  name: guid(storageAccount.id, managedIdentity.id, '974c5e8b-45b9-4653-ba55-5f855dd0fb88')
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '974c5e8b-45b9-4653-ba55-5f855dd0fb88')
+    principalId: managedIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource storageTableDataContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: storageAccount
+  name: guid(storageAccount.id, managedIdentity.id, '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')
     principalId: managedIdentity.properties.principalId
     principalType: 'ServicePrincipal'
   }
@@ -135,8 +156,28 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
       linuxFxVersion: 'Python|3.11'
       appSettings: [
         {
-          name: 'AzureWebJobsStorage'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+          name: 'AzureWebJobsStorage__accountName'
+          value: storageAccount.name
+        }
+        {
+          name: 'AzureWebJobsStorage__credential'
+          value: 'managedidentity'
+        }
+        {
+          name: 'AzureWebJobsStorage__clientId'
+          value: managedIdentity.properties.clientId
+        }
+        {
+          name: 'AzureWebJobsStorage__blobServiceUri'
+          value: 'https://${storageAccount.name}.blob.${environment().suffixes.storage}'
+        }
+        {
+          name: 'AzureWebJobsStorage__queueServiceUri'
+          value: 'https://${storageAccount.name}.queue.${environment().suffixes.storage}'
+        }
+        {
+          name: 'AzureWebJobsStorage__tableServiceUri'
+          value: 'https://${storageAccount.name}.table.${environment().suffixes.storage}'
         }
         {
           name: 'FUNCTIONS_EXTENSION_VERSION'
@@ -199,8 +240,8 @@ resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
   name: staticWebAppName
   location: location
   sku: {
-    name: 'Free'
-    tier: 'Free'
+    name: 'Standard'
+    tier: 'Standard'
   }
   properties: {}
 }

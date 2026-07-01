@@ -74,6 +74,52 @@ class FoundryAgentClient:
                     # Conversation cleanup failure should not fail user requests.
                     pass
 
+    def send_message_to_conversation(self, message: str) -> str:
+        """Send a message to the agent within a conversation thread.
+        
+        The agent will use its instructions to handle multi-turn context.
+        """
+        if self.responses_api_endpoint:
+            try:
+                return self._invoke_via_responses_endpoint(message)
+            except Exception:
+                # Fall back to the project SDK flow if preview endpoint auth is not accepted.
+                pass
+
+        with (
+            DefaultAzureCredential(managed_identity_client_id=self.managed_identity_client_id) as credential,
+            AIProjectClient(endpoint=self.project_endpoint, credential=credential) as project_client,
+            project_client.get_openai_client() as openai_client,
+        ):
+            conversation = openai_client.conversations.create(
+                items=[
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": message,
+                    }
+                ]
+            )
+
+            try:
+                response = openai_client.responses.create(
+                    conversation=conversation.id,
+                    extra_body={
+                        "agent_reference": {
+                            "name": self.agent_name,
+                            "type": "agent_reference",
+                        }
+                    },
+                )
+                text = getattr(response, "output_text", "") or self._extract_text(response)
+                return text.strip() or "The agent returned an empty response."
+            finally:
+                try:
+                    openai_client.conversations.delete(conversation_id=conversation.id)
+                except Exception:
+                    # Conversation cleanup failure should not fail user requests.
+                    pass
+
     def _build_user_message(self, rfp_text: str, response_text: str, search_context: str | None) -> str:
         context_block = ""
         if search_context:

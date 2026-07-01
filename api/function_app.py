@@ -10,6 +10,7 @@ from azure.core.exceptions import ResourceNotFoundError
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient
 from pypdf import PdfReader
+from docx import Document
 
 from agent_client import FoundryAgentClient
 
@@ -20,6 +21,9 @@ AZURE_STORAGE_CONTAINER_NAME = os.environ.get("AZURE_STORAGE_CONTAINER_NAME", "h
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 agent_client = FoundryAgentClient()
+
+# In-memory conversation store: conversationId -> { "thread_id": ..., "messages": [...] }
+conversations: dict[str, dict] = {}
 
 blob_service_client: BlobServiceClient | None = None
 if AZURE_STORAGE_ACCOUNT_NAME:
@@ -133,6 +137,152 @@ def get_artifact(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
+@app.route(route="extract-document", methods=["POST"])
+def extract_document(req: func.HttpRequest) -> func.HttpResponse:
+    """Extract text from uploaded PDF or DOCX document."""
+    content_type = req.headers.get("content-type", "")
+    if "multipart/form-data" not in content_type:
+        return _error(400, "Expected multipart/form-data request.")
+
+    body = req.get_body()
+    try:
+        files = _parse_multipart(body, content_type)
+    except Exception as exc:
+        return _error(400, f"Failed to parse request body: {exc}")
+
+    if "file" not in files:
+        return _error(400, "Missing field: file")
+
+    filename, file_bytes = files["file"]
+
+    # Determine file type and extract text
+    try:
+        if filename.lower().endswith(".pdf"):
+            text = _extract_pdf_text(file_bytes)
+        elif filename.lower().endswith(".docx"):
+            text = _extract_docx_text(file_bytes)
+        else:
+            return _error(400, "File must be PDF or DOCX.")
+    except Exception as exc:
+        return _error(400, f"Failed to extract text: {exc}")
+
+    if not text.strip():
+        return _error(400, "Document did not contain readable text.")
+
+    text = _trim_text(text)
+
+    return func.HttpResponse(
+        json.dumps({"text": text, "fileName": filename}),
+        mimetype="application/json",
+    )
+
+
+@app.route(route="conversations/new", methods=["POST"])
+def create_conversation(req: func.HttpRequest) -> func.HttpResponse:
+    """Create a new conversation thread."""
+    try:
+        # Generate a unique conversation ID
+        conversation_id = str(uuid.uuid4())
+        
+        # Initialize conversation in memory
+        conversations[conversation_id] = {
+            "thread_id": None,  # Will be set when first message is sent
+            "messages": []
+        }
+        
+        return func.HttpResponse(
+            json.dumps({
+                "conversationId": conversation_id,
+                "createdAt": datetime.utcnow().isoformat()
+            }),
+            mimetype="application/json",
+        )
+    except Exception as exc:
+        return _error(500, f"Failed to create conversation: {exc}")
+
+
+@app.route(route="conversations/{conversationId}/messages", methods=["POST"])
+def send_message(req: func.HttpRequest) -> func.HttpResponse:
+    """Send a message to a conversation and get agent response."""
+    conversation_id = req.route_params.get("conversationId", "")
+    
+    if conversation_id not in conversations:
+        return _error(404, "Conversation not found.")
+    
+    try:
+        body = req.get_json()
+        message = body.get("message", "").strip()
+        
+        if not message:
+            return _error(400, "Message cannot be empty.")
+    except Exception as exc:
+        return _error(400, f"Failed to parse request body: {exc}")
+    
+    try:
+        # Send message to agent
+        response_text = agent_client.send_message_to_conversation(message)
+        
+        # Store messages in conversation
+        conversations[conversation_id]["messages"].append({
+            "role": "user",
+            "content": message,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        conversations[conversation_id]["messages"].append({
+            "role": "assistant",
+            "content": response_text,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        
+        # Check if HTML was generated and store as artifact
+        html_content = _extract_html_from_recommendation(response_text)
+        html_url: str | None = None
+        
+        if html_content and blob_service_client:
+            try:
+                artifact_name = _upload_html_to_blob(html_content)
+                html_url = f"/api/artifacts/{artifact_name}"
+            except Exception as exc:
+                print(f"Warning: Could not upload HTML to blob storage: {exc}")
+        
+        result = {
+            "conversationId": conversation_id,
+            "userMessage": message,
+            "agentResponse": response_text,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        if html_url:
+            result["htmlUrl"] = html_url
+        
+        return func.HttpResponse(
+            json.dumps(result),
+            mimetype="application/json",
+        )
+    except Exception as exc:
+        return _error(500, f"Failed to process message: {exc}")
+
+
+@app.route(route="conversations/{conversationId}", methods=["GET"])
+def get_conversation(req: func.HttpRequest) -> func.HttpResponse:
+    """Retrieve conversation history."""
+    conversation_id = req.route_params.get("conversationId", "")
+    
+    if conversation_id not in conversations:
+        return _error(404, "Conversation not found.")
+    
+    try:
+        return func.HttpResponse(
+            json.dumps({
+                "conversationId": conversation_id,
+                "messages": conversations[conversation_id]["messages"]
+            }),
+            mimetype="application/json",
+        )
+    except Exception as exc:
+        return _error(500, f"Failed to retrieve conversation: {exc}")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -195,6 +345,39 @@ def _extract_pdf_text(file_bytes: bytes) -> str:
     for page in reader.pages:
         pages.append(page.extract_text() or "")
     return "\n".join(pages)
+
+
+def _extract_docx_text(file_bytes: bytes) -> str:
+    """Extract text from DOCX file, preserving structure (tables, lists)."""
+    doc = Document(BytesIO(file_bytes))
+    parts: list[str] = []
+    
+    for element in doc.element.body:
+        # Handle paragraphs
+        if element.tag.endswith("p"):
+            para = next((p for p in doc.paragraphs if p._element is element), None)
+            if para:
+                text = para.text.strip()
+                if text:
+                    parts.append(text)
+        # Handle tables
+        elif element.tag.endswith("tbl"):
+            table_obj = next((t for t in doc.tables if t._element is element), None)
+            if table_obj:
+                table_text = _extract_table_text(table_obj)
+                if table_text:
+                    parts.append(table_text)
+    
+    return "\n".join(parts)
+
+
+def _extract_table_text(table) -> str:
+    """Convert table to markdown-like format."""
+    result = []
+    for row in table.rows:
+        row_cells = [cell.text.strip() for cell in row.cells]
+        result.append("| " + " | ".join(row_cells) + " |")
+    return "\n".join(result)
 
 
 def _trim_text(text: str) -> str:

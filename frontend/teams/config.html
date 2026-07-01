@@ -85,13 +85,36 @@
     async function initTeamsConfig() {
       await microsoftTeams.app.initialize();
 
+      // Extract Teams context
+      let teamsContext = null;
+      try {
+        teamsContext = await microsoftTeams.app.getContext();
+        console.log("Teams context:", teamsContext);
+      } catch (e) {
+        console.log("Could not retrieve Teams context:", e);
+      }
+
       microsoftTeams.pages.config.registerOnSaveHandler((saveEvent) => {
+        // Pass Teams context to the main app via URL parameter
+        let contentUrl = APP_URL;
+        let websiteUrl = APP_URL;
+
+        if (teamsContext && teamsContext.user) {
+          // Store context in sessionStorage for the main UI to access
+          sessionStorage.setItem('teamsContext', JSON.stringify({
+            userId: teamsContext.user.id,
+            teamId: teamsContext.team?.id,
+            channelId: teamsContext.channel?.id,
+            tenantId: teamsContext.user.tenant?.id
+          }));
+        }
+
         microsoftTeams.pages.config
           .setConfig({
             entityId: "rfp-approver-main",
             suggestedDisplayName: "RFP Approver",
-            contentUrl: APP_URL,
-            websiteUrl: APP_URL,
+            contentUrl: contentUrl,
+            websiteUrl: websiteUrl,
           })
           .then(() => {
             document.getElementById("status").textContent = "Configuration saved.";
