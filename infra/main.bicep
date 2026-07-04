@@ -15,8 +15,11 @@ param appServicePlanName string = 'plan-oh-rfp'
 @description('Function App name')
 param functionAppName string = 'func-oh-rfp-approver'
 
-@description('Static Web App name')
-param staticWebAppName string = 'swa-oh-rfp-approver'
+@description('Azure Bot Service resource name')
+param botServiceName string = 'bot-oh-rfp-approver'
+
+@description('Entra App Registration client ID for the bot (MICROSOFT_APP_ID). Create via az ad app create.')
+param botMicrosoftAppId string
 
 @description('Foundry project endpoint URL')
 param aiProjectEndpoint string = 'https://ohsupparfp-resource.services.ai.azure.com/api/projects/ohsupparfp'
@@ -227,31 +230,50 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
           name: 'AZURE_STORAGE_CONTAINER_NAME'
           value: 'html-artifacts'
         }
+        {
+          name: 'MICROSOFT_APP_ID'
+          value: botMicrosoftAppId
+        }
+        {
+          name: 'MICROSOFT_APP_PASSWORD'
+          value: '' // Set this manually in the portal or pass as a secure parameter after registering the app secret.
+        }
       ]
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Static Web App (free tier, linked to Function App as backend)
+// Azure Bot Service + Teams Channel
+// Ref: https://learn.microsoft.com/en-us/azure/bot-service/bot-service-overview
 // ---------------------------------------------------------------------------
 
-resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
-  name: staticWebAppName
-  location: location
+resource botService 'Microsoft.BotService/botServices@2022-09-15' = {
+  name: botServiceName
+  location: 'global' // Bot Services are always deployed globally.
+  kind: 'azurebot'
   sku: {
-    name: 'Standard'
-    tier: 'Standard'
+    name: 'S1'
   }
-  properties: {}
+  properties: {
+    displayName: 'RFP Approver Bot'
+    msaAppId: botMicrosoftAppId
+    msaAppType: 'SingleTenant'
+    msaAppTenantId: subscription().tenantId
+    // Messaging endpoint: the Azure Functions /api/messages HTTP trigger.
+    // Ref: https://learn.microsoft.com/en-us/azure/bot-service/bot-service-channel-connect-teams
+    endpoint: 'https://${functionApp.properties.defaultHostName}/api/messages'
+  }
 }
 
-resource swaLinkedBackend 'Microsoft.Web/staticSites/linkedBackends@2022-09-01' = {
-  parent: staticWebApp
-  name: 'backend'
+resource botTeamsChannel 'Microsoft.BotService/botServices/channels@2022-09-15' = {
+  parent: botService
+  name: 'MsTeamsChannel'
   properties: {
-    backendResourceId: functionApp.id
-    region: location
+    channelName: 'MsTeamsChannel'
+    properties: {
+      isEnabled: true
+    }
   }
 }
 
@@ -260,7 +282,6 @@ resource swaLinkedBackend 'Microsoft.Web/staticSites/linkedBackends@2022-09-01' 
 // ---------------------------------------------------------------------------
 
 output functionAppUrl string = 'https://${functionApp.properties.defaultHostName}'
-output staticWebAppUrl string = 'https://${staticWebApp.properties.defaultHostname}'
+output botMessagingEndpoint string = 'https://${functionApp.properties.defaultHostName}/api/messages'
 output managedIdentityPrincipalId string = managedIdentity.properties.principalId
 output storageAccountName string = storageAccount.name
-output blobContainerName string = 'html-artifacts'

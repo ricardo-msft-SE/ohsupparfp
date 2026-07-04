@@ -1,7 +1,7 @@
 {
   "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
   "manifestVersion": "1.16",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "id": "a1db9f41-4a20-40c5-b35f-906d457ca4d6",
   "packageName": "com.ohsupparfp.rfpapprover",
   "name": {
@@ -10,36 +10,37 @@
   },
   "developer": {
     "name": "OHSUPP ARFP",
-    "websiteUrl": "https://swa-oh-rfp-approver.azurestaticapps.net/",
-    "privacyUrl": "https://swa-oh-rfp-approver.azurestaticapps.net/",
-    "termsOfUseUrl": "https://swa-oh-rfp-approver.azurestaticapps.net/"
+    "websiteUrl": "https://func-oh-rfp-approver.azurewebsites.net/",
+    "privacyUrl": "https://func-oh-rfp-approver.azurewebsites.net/",
+    "termsOfUseUrl": "https://func-oh-rfp-approver.azurewebsites.net/"
   },
   "description": {
-    "short": "Open the RFP Approver Foundry web UI in Teams.",
-    "full": "Channel tab app that links directly to the deployed RFP Approver web UI hosted on Azure Static Web Apps."
+    "short": "Attach an RFP and a vendor response to get an AI recommendation.",
+    "full": "Upload an RFP document (PDF) and a vendor response document (PDF) in a single Teams message. The agent analyzes both and returns a grounded recommendation inline in the chat."
   },
   "icons": {
     "color": "icons/color.png",
     "outline": "icons/outline.png"
   },
   "accentColor": "#005EA2",
-  "configurableTabs": [
+  "bots": [
     {
-      "configurationUrl": "https://swa-oh-rfp-approver.azurestaticapps.net/teams/config.html",
-      "canUpdateConfiguration": true,
+      "botId": "ff78dedd-799c-49f0-aebb-3998f8608739",
       "scopes": [
-        "team"
+        "personal",
+        "team",
+        "groupchat"
       ],
-      "context": [
-        "channelTab"
-      ]
+      "supportsFiles": true,
+      "isNotificationOnly": false
     }
   ],
   "permissions": [
-    "identity"
+    "identity",
+    "messageTeamMembers"
   ],
   "validDomains": [
-    "swa-oh-rfp-approver.azurestaticapps.net"
+    "func-oh-rfp-approver.azurewebsites.net"
   ],
-  "defaultInstallScope": "team"
+  "defaultInstallScope": "personal"
 }

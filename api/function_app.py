@@ -284,6 +284,50 @@ def get_conversation(req: func.HttpRequest) -> func.HttpResponse:
 
 
 # ---------------------------------------------------------------------------
+# Teams Bot messaging endpoint
+# ---------------------------------------------------------------------------
+
+@app.route(route="messages", methods=["POST"])
+async def messages(req: func.HttpRequest) -> func.HttpResponse:
+    """Bot Framework messaging endpoint for Azure Bot Service / Teams integration.
+
+    Azure Bot Service forwards every Teams activity (message, invoke, etc.) to
+    this route as a signed POST.  BotFrameworkAdapter verifies the JWT signature
+    using MICROSOFT_APP_ID / MICROSOFT_APP_PASSWORD before dispatching to
+    RfpApproverBot.
+
+    Security reference:
+      https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication
+    """
+    from botbuilder.schema import Activity
+    from bot_adapter import adapter
+    from teams_bot import RfpApproverBot
+
+    try:
+        body = req.get_json()
+    except Exception:
+        return func.HttpResponse(
+            json.dumps({"detail": "Invalid JSON body."}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    activity = Activity().deserialize(body)
+    auth_header = req.headers.get("Authorization", "")
+
+    bot = RfpApproverBot()
+    invoke_response = await adapter.process_activity(activity, auth_header, bot.on_turn)
+
+    if invoke_response:
+        return func.HttpResponse(
+            body=json.dumps(invoke_response.body),
+            status_code=invoke_response.status,
+            mimetype="application/json",
+        )
+    return func.HttpResponse(status_code=200)
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

@@ -8,8 +8,8 @@ param(
   [Parameter(Mandatory = $false)]
   [string]$FunctionAppName = "func-oh-rfp-approver",
 
-  [Parameter(Mandatory = $false)]
-  [string]$StaticWebAppName = "swa-oh-rfp-approver",
+  [Parameter(Mandatory = $true)]
+  [string]$MicrosoftAppPassword,
 
   [Parameter(Mandatory = $false)]
   [string]$LogAnalyticsWorkspaceName = "log-oh-rfp",
@@ -60,7 +60,8 @@ $requiredProviders = @(
   "Microsoft.OperationalInsights",
   "Microsoft.ManagedIdentity",
   "Microsoft.CognitiveServices",
-  "Microsoft.Storage"
+  "Microsoft.Storage",
+  "Microsoft.BotService"
 )
 
 foreach ($provider in $requiredProviders) {
@@ -74,7 +75,7 @@ Write-Host "Deploying infrastructure from Bicep..."
 az deployment group create `
   --resource-group $ResourceGroup `
   --template-file ./infra/main.bicep `
-  --parameters location=$Location logAnalyticsWorkspaceName=$LogAnalyticsWorkspaceName managedIdentityName=$ManagedIdentityName appServicePlanName=$AppServicePlanName functionAppName=$FunctionAppName staticWebAppName=$StaticWebAppName storageAccountName=$StorageAccountName aiSearchServiceName=$SearchServiceName aiSearchIndexName=$SearchIndexName
+  --parameters ./infra/main.bicepparam
 if ($LASTEXITCODE -ne 0) {
   throw "Bicep deployment failed for resource group '$ResourceGroup'."
 }
@@ -137,41 +138,20 @@ if ($LASTEXITCODE -ne 0) {
   throw "Failed to assign 'Search Index Data Reader' role to managed identity."
 }
 
-Write-Host "Linking Static Web App backend to Function App..."
-$functionAppId = az functionapp show --resource-group $ResourceGroup --name $FunctionAppName --query id -o tsv
-if ($LASTEXITCODE -ne 0 -or -not $functionAppId) {
-  throw "Failed to resolve Function App resource ID."
-}
-
-az staticwebapp backends link `
-  --name $StaticWebAppName `
+Write-Host "Setting bot client secret on Function App..."
+az functionapp config appsettings set `
   --resource-group $ResourceGroup `
-  --backend-resource-id $functionAppId `
-  --backend-region $Location | Out-Null
+  --name $FunctionAppName `
+  --settings "MICROSOFT_APP_PASSWORD=$MicrosoftAppPassword" | Out-Null
 if ($LASTEXITCODE -ne 0) {
-  throw "Failed to link Static Web App backend to Function App."
+  throw "Failed to set MICROSOFT_APP_PASSWORD on Function App '$FunctionAppName'."
 }
 
-Write-Host "Getting Static Web App deployment token..."
-$swaToken = az staticwebapp secrets list --name $StaticWebAppName --resource-group $ResourceGroup --query "properties.apiKey" -o tsv
-if ($LASTEXITCODE -ne 0 -or -not $swaToken) {
-  throw "Failed to retrieve Static Web App deployment token."
+Write-Host "Getting bot messaging endpoint..."
+$funcHostName = az functionapp show --resource-group $ResourceGroup --name $FunctionAppName --query "defaultHostName" -o tsv
+if ($LASTEXITCODE -ne 0 -or -not $funcHostName) {
+  throw "Deployment completed but failed to fetch Function App hostname."
 }
-
-Write-Host "Deploying frontend to Static Web App..."
-Push-Location ./frontend
-npx @azure/static-web-apps-cli deploy . --deployment-token $swaToken --env production
-if ($LASTEXITCODE -ne 0) {
-  Pop-Location
-  throw "Failed to deploy frontend to Static Web App. Ensure Node.js and swa CLI are available (npx will install if needed)."
-}
-Pop-Location
-
-Write-Host "Getting public app URL..."
-$swaHostName = az staticwebapp show --resource-group $ResourceGroup --name $StaticWebAppName --query "defaultHostname" -o tsv
-if ($LASTEXITCODE -ne 0 -or -not $swaHostName) {
-  throw "Deployment completed but failed to fetch Static Web App URL."
-}
-Write-Host "Done. App URL: https://$swaHostName"
+Write-Host "Done. Bot messaging endpoint: https://$funcHostName/api/messages"
 
 Pop-Location
