@@ -119,16 +119,44 @@ resource storageTableDataContributorRole 'Microsoft.Authorization/roleAssignment
 // Function App (Linux Consumption)
 // ---------------------------------------------------------------------------
 
+// Azure Files content share (required for Premium plan with allowSharedKeyAccess: false)
+resource fileService 'Microsoft.Storage/storageAccounts/fileServices@2023-01-01' = {
+  parent: storageAccount
+  name: 'default'
+}
+
+resource contentShare 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-01-01' = {
+  parent: fileService
+  name: 'func-oh-rfp-approver-cu-content'
+  properties: {
+    shareQuota: 5120
+    enabledProtocols: 'SMB'
+  }
+}
+
+// Storage File Data SMB Share Contributor – required for managed-identity Azure Files access
+resource storageFileSmbShareContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: storageAccount
+  name: guid(storageAccount.id, managedIdentity.id, '0c867c2a-1d8c-454a-a3db-ab2ea1bdc8bb')
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0c867c2a-1d8c-454a-a3db-ab2ea1bdc8bb')
+    principalId: managedIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// EP1 (Elastic Premium) supports managed-identity Azure Files; Y1 (Consumption) does not.
 resource appServicePlan 'Microsoft.Web/serverfarms@2022-09-01' = {
   name: appServicePlanName
   location: location
   kind: 'linux'
   sku: {
-    name: 'Y1'
-    tier: 'Dynamic'
+    name: 'EP1'
+    tier: 'ElasticPremium'
   }
   properties: {
     reserved: true
+    maximumElasticWorkerCount: 20
   }
 }
 
@@ -179,6 +207,10 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
         {
           name: 'FUNCTIONS_WORKER_RUNTIME'
           value: 'python'
+        }
+        {
+          name: 'WEBSITE_CONTENTSHARE'
+          value: contentShare.name
         }
         {
           name: 'WEBSITE_RUN_FROM_PACKAGE'
