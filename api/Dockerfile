@@ -1,13 +1,12 @@
-FROM mcr.microsoft.com/azure-functions/python:4-python3.11
+FROM python:3.11-slim
 
-ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
-    AzureFunctionsJobHost__Logging__Console__IsEnabled=true
+WORKDIR /app
 
-# Install to .python_packages/lib/site-packages/ – the path the Azure Functions
-# bundled Python worker adds to sys.path at runtime.
-COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt \
-    --target /home/site/wwwroot/.python_packages/lib/site-packages
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy function app code
-COPY . /home/site/wwwroot
+COPY . .
+
+EXPOSE 80
+
+CMD ["python", "app.py"]
