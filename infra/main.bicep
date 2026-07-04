@@ -57,6 +57,17 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   }
 }
 
+resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
+  name: '${functionAppName}-ai'
+  location: location
+  kind: 'web'
+  properties: {
+    Application_Type: 'web'
+    WorkspaceResourceId: logAnalytics.id
+    RetentionInDays: 30
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Identity
 // ---------------------------------------------------------------------------
@@ -249,6 +260,14 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
           value: aiSearchIndexName
         }
         {
+          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+          value: appInsights.properties.ConnectionString
+        }
+        {
+          name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
+          value: '~3'
+        }
+        {
           name: 'MICROSOFT_APP_ID'
           value: botMicrosoftAppId
         }
@@ -304,3 +323,5 @@ output functionAppUrl string = 'https://${functionApp.properties.defaultHostName
 output botMessagingEndpoint string = 'https://${functionApp.properties.defaultHostName}/api/messages'
 output managedIdentityPrincipalId string = managedIdentity.properties.principalId
 output storageAccountName string = storageAccount.name
+output appInsightsName string = appInsights.name
+output appInsightsConnectionString string = appInsights.properties.ConnectionString
