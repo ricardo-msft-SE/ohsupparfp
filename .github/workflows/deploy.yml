@@ -10,10 +10,10 @@ permissions:
   contents: read
 
 env:
-  RESOURCE_GROUP: rg-ohsupparfp-web
-  RESOURCE_GROUP_LOCATION: eastus2   # Must match the existing RG's location
-  LOCATION: centralus                # Resources are deployed here (quota available)
-  FUNCTION_APP_NAME: func-oh-rfp-approver
+  RESOURCE_GROUP: rg-ohsupparfp-web-cu
+  RESOURCE_GROUP_LOCATION: centralus   # Must match the existing RG's location
+  LOCATION: centralus                # Resources are deployed here
+  FUNCTION_APP_NAME: func-oh-rfp-approver-cu
   FOUNDRY_RESOURCE_GROUP: rg-ohsupparfp
   FOUNDRY_RESOURCE_NAME: ohsupparfp-resource
   SEARCH_RESOURCE_GROUP: rg-ohsupparfp
