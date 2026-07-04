@@ -196,7 +196,7 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
         }
         {
           name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
-          value: '1'
+          value: '0'
         }
         {
           name: 'AZURE_CLIENT_ID'

@@ -81,20 +81,34 @@ jobs:
             --name "$FUNCTION_APP_NAME" \
             --settings "MICROSOFT_APP_PASSWORD=${{ secrets.MICROSOFT_APP_PASSWORD }}"
 
-      - name: Install Azure Functions Core Tools
-        run: npm install -g azure-functions-core-tools@4 --unsafe-perm true
+      - name: Build Python packages in Azure-compatible container
+        run: |
+          docker run --rm \
+            -v "$(pwd)/api:/api" \
+            mcr.microsoft.com/azure-functions/python:4-python3.11-buildenv \
+            bash -c "pip install -r /api/requirements.txt --target /api/.python_packages/lib/site-packages --upgrade --quiet"
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Deploy to Azure Functions (Docker native deps build)
+      - name: Deploy to Azure Functions via Kudu zipdeploy
         run: |
           cd api
-          func azure functionapp publish "$FUNCTION_APP_NAME" \
-            --python \
-            --build-native-deps
+          zip -r /tmp/deploy.zip . -x "*.pyc" -x "__pycache__/*" -x ".venv/*"
+
+          PUBLISH_USER=$(az functionapp deployment list-publishing-credentials \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$FUNCTION_APP_NAME" \
+            --query "publishingUserName" -o tsv)
+          PUBLISH_PASS=$(az functionapp deployment list-publishing-credentials \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$FUNCTION_APP_NAME" \
+            --query "publishingPassword" -o tsv)
+
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "https://$FUNCTION_APP_NAME.scm.azurewebsites.net/api/zipdeploy" \
+            -u "$PUBLISH_USER:$PUBLISH_PASS" \
+            --data-binary @/tmp/deploy.zip \
+            -H "Content-Type: application/zip")
+          echo "Kudu zipdeploy HTTP status: $HTTP"
+          [[ "$HTTP" == "200" || "$HTTP" == "202" ]] || (echo "Deployment failed" && exit 1)
 
   # ─── 3. RBAC assignments ──────────────────────────────────────────────────
   rbac:
