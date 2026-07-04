@@ -192,6 +192,10 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
         }
         {
           name: 'WEBSITE_RUN_FROM_PACKAGE'
+          value: '0'
+        }
+        {
+          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
           value: '1'
         }
         {
