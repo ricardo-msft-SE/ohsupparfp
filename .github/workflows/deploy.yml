@@ -11,7 +11,7 @@ permissions:
 
 env:
   RESOURCE_GROUP: rg-ohsupparfp-web
-  LOCATION: eastus2
+  LOCATION: centralus
   FUNCTION_APP_NAME: func-oh-rfp-approver
   FOUNDRY_RESOURCE_GROUP: rg-ohsupparfp
   FOUNDRY_RESOURCE_NAME: ohsupparfp-resource

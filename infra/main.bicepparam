@@ -1,6 +1,6 @@
 using './main.bicep'
 
-param location = 'eastus2'
+param location = 'centralus'
 param logAnalyticsWorkspaceName = 'log-oh-rfp'
 param managedIdentityName = 'id-oh-rfp-web'
 param appServicePlanName = 'plan-oh-rfp'
