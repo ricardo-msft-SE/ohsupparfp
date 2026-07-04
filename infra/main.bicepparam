@@ -11,4 +11,4 @@ param aiProjectEndpoint = 'https://ohsupparfp-resource.services.ai.azure.com/api
 param aiAgentName = 'oh-rfpApprover1'
 param aiSearchServiceName = 'aisearch-ohsupparfp'
 param aiSearchIndexName = 'rfp-index'
-param storageAccountName = 'stohrfpapprover'
+param storageAccountName = 'stohrfpappa497'
