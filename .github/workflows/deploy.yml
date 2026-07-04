@@ -81,20 +81,30 @@ jobs:
             --name "$FUNCTION_APP_NAME" \
             --settings "MICROSOFT_APP_PASSWORD=${{ secrets.MICROSOFT_APP_PASSWORD }}"
 
-      - name: Install Azure Functions Core Tools
-        run: npm install -g azure-functions-core-tools@4 --unsafe-perm true
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Deploy to Azure Functions (remote Oryx build)
+      - name: Deploy to Azure Functions via Kudu zipdeploy (source-only + Oryx)
         run: |
           cd api
-          func azure functionapp publish "$FUNCTION_APP_NAME" \
-            --python \
-            --build remote
+          # Source-only zip; SCM_DO_BUILD_DURING_DEPLOYMENT=1 triggers Oryx pip install on the server
+          zip -r /tmp/deploy.zip . -x "*.pyc" -x "__pycache__/*" -x ".venv/*" -x ".python_packages/*"
+          echo "Zip size: $(du -sh /tmp/deploy.zip | cut -f1)"
+
+          PUBLISH_USER=$(az functionapp deployment list-publishing-credentials \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$FUNCTION_APP_NAME" \
+            --query "publishingUserName" -o tsv)
+          PUBLISH_PASS=$(az functionapp deployment list-publishing-credentials \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$FUNCTION_APP_NAME" \
+            --query "publishingPassword" -o tsv)
+
+          HTTP=$(curl -s -o /tmp/kudu_resp.txt -w "%{http_code}" \
+            -X POST "https://$FUNCTION_APP_NAME.scm.azurewebsites.net/api/zipdeploy" \
+            -u "$PUBLISH_USER:$PUBLISH_PASS" \
+            --data-binary @/tmp/deploy.zip \
+            -H "Content-Type: application/zip")
+          echo "Kudu zipdeploy HTTP status: $HTTP"
+          cat /tmp/kudu_resp.txt || true
+          [[ "$HTTP" == "200" || "$HTTP" == "202" ]] || (echo "Deployment failed with HTTP $HTTP" && exit 1)
 
   # ─── 3. RBAC assignments ──────────────────────────────────────────────────
   rbac:
