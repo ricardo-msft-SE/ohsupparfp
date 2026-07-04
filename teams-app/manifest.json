@@ -10,9 +10,9 @@
   },
   "developer": {
     "name": "OHSUPP ARFP",
-    "websiteUrl": "https://func-oh-rfp-approver-cu.azurewebsites.net/",
-    "privacyUrl": "https://func-oh-rfp-approver-cu.azurewebsites.net/",
-    "termsOfUseUrl": "https://func-oh-rfp-approver-cu.azurewebsites.net/"
+    "websiteUrl": "https://func-oh-rfp-approver-eus.azurewebsites.net/",
+    "privacyUrl": "https://func-oh-rfp-approver-eus.azurewebsites.net/",
+    "termsOfUseUrl": "https://func-oh-rfp-approver-eus.azurewebsites.net/"
   },
   "description": {
     "short": "Attach an RFP and a vendor response to get an AI recommendation.",
@@ -40,7 +40,7 @@
     "messageTeamMembers"
   ],
   "validDomains": [
-    "func-oh-rfp-approver-cu.azurewebsites.net"
+    "func-oh-rfp-approver-eus.azurewebsites.net"
   ],
   "defaultInstallScope": "personal"
 }

@@ -10,10 +10,10 @@ permissions:
   contents: read
 
 env:
-  RESOURCE_GROUP: rg-ohsupparfp-web-cu
-  RESOURCE_GROUP_LOCATION: centralus   # Must match the existing RG's location
-  LOCATION: centralus                # Resources are deployed here
-  FUNCTION_APP_NAME: func-oh-rfp-approver-cu
+  RESOURCE_GROUP: rg-ohsupparfp-web-eus
+  RESOURCE_GROUP_LOCATION: eastus    # FC1 (Flex Consumption) requires eastus; centralus not supported
+  LOCATION: eastus
+  FUNCTION_APP_NAME: func-oh-rfp-approver-eus
   FOUNDRY_RESOURCE_GROUP: rg-ohsupparfp
   FOUNDRY_RESOURCE_NAME: ohsupparfp-resource
   SEARCH_RESOURCE_GROUP: rg-ohsupparfp
@@ -92,29 +92,15 @@ jobs:
             --target api/.python_packages/lib/site-packages \
             --upgrade --quiet
 
-      - name: Deploy to Azure Functions via Kudu zipdeploy
+      - name: Deploy to Azure Functions (Flex Consumption – blob upload)
         run: |
           cd api
           zip -r /tmp/deploy.zip . -x "*.pyc" -x "__pycache__/*" -x ".venv/*"
           echo "Zip size: $(du -sh /tmp/deploy.zip | cut -f1)"
-
-          PUBLISH_USER=$(az functionapp deployment list-publishing-credentials \
+          az functionapp deployment source config-zip \
             --resource-group "$RESOURCE_GROUP" \
             --name "$FUNCTION_APP_NAME" \
-            --query "publishingUserName" -o tsv)
-          PUBLISH_PASS=$(az functionapp deployment list-publishing-credentials \
-            --resource-group "$RESOURCE_GROUP" \
-            --name "$FUNCTION_APP_NAME" \
-            --query "publishingPassword" -o tsv)
-
-          HTTP=$(curl -s -o /tmp/kudu_resp.txt -w "%{http_code}" \
-            -X POST "https://$FUNCTION_APP_NAME.scm.azurewebsites.net/api/zipdeploy" \
-            -u "$PUBLISH_USER:$PUBLISH_PASS" \
-            --data-binary @/tmp/deploy.zip \
-            -H "Content-Type: application/zip")
-          echo "Kudu HTTP: $HTTP"
-          cat /tmp/kudu_resp.txt || true
-          [[ "$HTTP" == "200" || "$HTTP" == "202" ]] || (echo "Kudu deploy failed" && exit 1)
+            --src /tmp/deploy.zip
 
   # ─── 3. RBAC assignments ──────────────────────────────────────────────────
   rbac:
@@ -168,7 +154,7 @@ jobs:
         run: |
           STORAGE_ID=$(az storage account show \
             --resource-group "$RESOURCE_GROUP" \
-            --name stohrfpbottest1 \
+            --name stohrfpboteus1 \
             --query id -o tsv 2>/dev/null || true)
           if [ -n "$STORAGE_ID" ]; then
             SP_OID=$(az ad sp show --id "${{ secrets.AZURE_CLIENT_ID }}" --query id -o tsv)
