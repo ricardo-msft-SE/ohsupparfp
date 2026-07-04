@@ -192,11 +192,11 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
         }
         {
           name: 'WEBSITE_RUN_FROM_PACKAGE'
-          value: '0'
+          value: '1'
         }
         {
           name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
-          value: '1'
+          value: '0'
         }
         {
           // Required for func CLI remote build detection and Consumption plan content storage.
