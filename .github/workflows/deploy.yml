@@ -90,10 +90,12 @@ jobs:
         run: |
           cd api
           zip -r /tmp/deploy.zip . -x "*.pyc" -x "__pycache__/*" -x ".venv/*"
-          az functionapp deployment source config-zip \
+          az functionapp deploy \
             --resource-group "$RESOURCE_GROUP" \
             --name "$FUNCTION_APP_NAME" \
-            --src /tmp/deploy.zip
+            --src-path /tmp/deploy.zip \
+            --type zip \
+            --async true
 
   # ─── 3. RBAC assignments ──────────────────────────────────────────────────
   rbac:
