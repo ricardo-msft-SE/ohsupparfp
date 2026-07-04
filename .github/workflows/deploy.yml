@@ -81,21 +81,20 @@ jobs:
             --name "$FUNCTION_APP_NAME" \
             --settings "MICROSOFT_APP_PASSWORD=${{ secrets.MICROSOFT_APP_PASSWORD }}"
 
+      - name: Install Azure Functions Core Tools
+        run: npm install -g azure-functions-core-tools@4 --unsafe-perm true
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Build and deploy Function App (zip + remote Oryx build)
+      - name: Deploy to Azure Functions (remote Oryx build)
         run: |
           cd api
-          zip -r /tmp/deploy.zip . -x "*.pyc" -x "__pycache__/*" -x ".venv/*"
-          az functionapp deploy \
-            --resource-group "$RESOURCE_GROUP" \
-            --name "$FUNCTION_APP_NAME" \
-            --src-path /tmp/deploy.zip \
-            --type zip \
-            --async true
+          func azure functionapp publish "$FUNCTION_APP_NAME" \
+            --python \
+            --build remote
 
   # ─── 3. RBAC assignments ──────────────────────────────────────────────────
   rbac:
