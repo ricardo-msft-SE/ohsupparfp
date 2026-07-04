@@ -1,39 +1,8 @@
 import json
-import os
-import re
-import uuid
-from datetime import datetime
-from io import BytesIO
 
 import azure.functions as func
-from azure.core.exceptions import ResourceNotFoundError
-from azure.identity import DefaultAzureCredential
-from azure.storage.blob import BlobServiceClient
-from pypdf import PdfReader
-from docx import Document
-
-from agent_client import FoundryAgentClient
-
-MAX_TEXT_CHARS = int(os.environ.get("MAX_TEXT_CHARS", "120000"))
-AZURE_STORAGE_ACCOUNT_NAME = os.environ.get("AZURE_STORAGE_ACCOUNT_NAME", "")
-AZURE_STORAGE_CONTAINER_NAME = os.environ.get("AZURE_STORAGE_CONTAINER_NAME", "html-artifacts")
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
-
-agent_client = FoundryAgentClient()
-
-# In-memory conversation store: conversationId -> { "thread_id": ..., "messages": [...] }
-conversations: dict[str, dict] = {}
-
-blob_service_client: BlobServiceClient | None = None
-if AZURE_STORAGE_ACCOUNT_NAME:
-    try:
-        blob_service_client = BlobServiceClient(
-            account_url=f"https://{AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net",
-            credential=DefaultAzureCredential(),
-        )
-    except Exception as exc:
-        print(f"Warning: Could not initialize blob storage client: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -48,9 +17,48 @@ def health(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
-@app.route(route="recommend", methods=["POST"])
-def recommend(req: func.HttpRequest) -> func.HttpResponse:
-    content_type = req.headers.get("content-type", "")
+# ---------------------------------------------------------------------------
+# Teams Bot messaging endpoint
+# ---------------------------------------------------------------------------
+
+@app.route(route="messages", methods=["POST"])
+async def messages(req: func.HttpRequest) -> func.HttpResponse:
+    """Bot Framework messaging endpoint for Azure Bot Service / Teams integration.
+
+    Azure Bot Service forwards every Teams activity (message, invoke, etc.) to
+    this route as a signed POST.  BotFrameworkAdapter verifies the JWT signature
+    using MICROSOFT_APP_ID / MICROSOFT_APP_PASSWORD before dispatching to
+    RfpApproverBot.
+
+    Security reference:
+      https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication
+    """
+    from botbuilder.schema import Activity
+    from bot_adapter import adapter
+    from teams_bot import RfpApproverBot
+
+    try:
+        body = req.get_json()
+    except Exception:
+        return func.HttpResponse(
+            json.dumps({"detail": "Invalid JSON body."}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    activity = Activity().deserialize(body)
+    auth_header = req.headers.get("Authorization", "")
+
+    bot = RfpApproverBot()
+    invoke_response = await adapter.process_activity(activity, auth_header, bot.on_turn)
+
+    if invoke_response:
+        return func.HttpResponse(
+            body=json.dumps(invoke_response.body),
+            status_code=invoke_response.status,
+            mimetype="application/json",
+        )
+    return func.HttpResponse(status_code=200)
     if "multipart/form-data" not in content_type:
         return _error(400, "Expected multipart/form-data request.")
 
@@ -325,13 +333,6 @@ async def messages(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="application/json",
         )
     return func.HttpResponse(status_code=200)
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _error(status: int, detail: str) -> func.HttpResponse:
     return func.HttpResponse(
         json.dumps({"detail": detail}),
         status_code=status,

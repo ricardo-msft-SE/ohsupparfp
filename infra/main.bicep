@@ -85,16 +85,6 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   }
 }
 
-resource blobContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
-  name: '${storageAccountName}/default/html-artifacts'
-  properties: {
-    publicAccess: 'None'
-  }
-  dependsOn: [
-    storageAccount
-  ]
-}
-
 resource storageBlobDataContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: storageAccount
   name: guid(storageAccount.id, managedIdentity.id, 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
@@ -234,14 +224,6 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
         {
           name: 'AZURE_AI_SEARCH_INDEX_NAME'
           value: aiSearchIndexName
-        }
-        {
-          name: 'AZURE_STORAGE_ACCOUNT_NAME'
-          value: storageAccountName
-        }
-        {
-          name: 'AZURE_STORAGE_CONTAINER_NAME'
-          value: 'html-artifacts'
         }
         {
           name: 'MICROSOFT_APP_ID'

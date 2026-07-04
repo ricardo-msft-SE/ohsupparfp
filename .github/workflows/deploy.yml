@@ -81,12 +81,16 @@ jobs:
             --name "$FUNCTION_APP_NAME" \
             --settings "MICROSOFT_APP_PASSWORD=${{ secrets.MICROSOFT_APP_PASSWORD }}"
 
-      - name: Build Python packages in Azure-compatible container
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies into .python_packages
         run: |
-          docker run --rm \
-            -v "$(pwd)/api:/api" \
-            mcr.microsoft.com/azure-functions/python:4-python3.11-buildenv \
-            bash -c "pip install -r /api/requirements.txt --target /api/.python_packages/lib/site-packages -q"
+          pip install -r api/requirements.txt \
+            --target api/.python_packages/lib/site-packages \
+            --upgrade --quiet
 
       - name: Deploy to Azure Functions via Kudu zipdeploy
         run: |

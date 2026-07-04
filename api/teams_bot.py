@@ -5,6 +5,7 @@ from io import BytesIO
 
 import aiohttp
 from botbuilder.core import ActivityHandler, MessageFactory, TurnContext
+from docx import Document
 from pypdf import PdfReader
 
 from agent_client import FoundryAgentClient
@@ -23,6 +24,30 @@ def _extract_pdf_text(pdf_bytes: bytes) -> str:
         if text:
             parts.append(text)
     return "\n".join(parts)
+
+
+def _extract_docx_text(docx_bytes: bytes) -> str:
+    doc = Document(BytesIO(docx_bytes))
+    parts = []
+    for element in doc.element.body:
+        if element.tag.endswith("p"):
+            para = next((p for p in doc.paragraphs if p._element is element), None)
+            if para and para.text.strip():
+                parts.append(para.text.strip())
+        elif element.tag.endswith("tbl"):
+            table_obj = next((t for t in doc.tables if t._element is element), None)
+            if table_obj:
+                for row in table_obj.rows:
+                    cells = [c.text.strip() for c in row.cells]
+                    parts.append("| " + " | ".join(cells) + " |")
+    return "\n".join(parts)
+
+
+def _extract_file_text(file_bytes: bytes, filename: str) -> str:
+    """Route to the right extractor based on file extension."""
+    if filename.lower().endswith(".docx"):
+        return _extract_docx_text(file_bytes)
+    return _extract_pdf_text(file_bytes)
 
 
 def _trim_text(text: str) -> str:
@@ -61,8 +86,8 @@ class RfpApproverBot(ActivityHandler):
                 MessageFactory.text(
                     "**RFP Approver** is ready.\n\n"
                     "Attach **both** documents in a **single message**:\n"
-                    "1. The **RFP document** (PDF)\n"
-                    "2. The vendor **response document** (PDF)\n\n"
+                    "1. The **RFP document** (PDF or DOCX)\n"
+                    "2. The vendor **response document** (PDF or DOCX)\n\n"
                     "The first attachment is treated as the RFP; the second as the vendor response."
                 )
             )
@@ -96,14 +121,14 @@ class RfpApproverBot(ActivityHandler):
                     session, resp_att.content["downloadUrl"]
                 )
 
-            rfp_text = _trim_text(_extract_pdf_text(rfp_bytes))
-            response_text = _trim_text(_extract_pdf_text(response_bytes))
+            rfp_text = _trim_text(_extract_file_text(rfp_bytes, rfp_att.name or ""))
+            response_text = _trim_text(_extract_file_text(response_bytes, resp_att.name or ""))
 
             if not rfp_text.strip():
                 await turn_context.send_activity(
                     MessageFactory.text(
                         "The **RFP document** did not contain readable text. "
-                        "Please ensure it is a text-based (not scanned) PDF."
+                        "Please ensure it is a text-based (not scanned) PDF or DOCX."
                     )
                 )
                 return
@@ -112,7 +137,7 @@ class RfpApproverBot(ActivityHandler):
                 await turn_context.send_activity(
                     MessageFactory.text(
                         "The **response document** did not contain readable text. "
-                        "Please ensure it is a text-based (not scanned) PDF."
+                        "Please ensure it is a text-based (not scanned) PDF or DOCX."
                     )
                 )
                 return
