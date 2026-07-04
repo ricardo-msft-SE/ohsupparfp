@@ -89,12 +89,12 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Deploy to Azure Functions (remote Oryx build)
+      - name: Deploy to Azure Functions (local build)
         run: |
           cd api
           func azure functionapp publish "$FUNCTION_APP_NAME" \
             --python \
-            --build remote
+            --build local
 
   # ─── 3. RBAC assignments ──────────────────────────────────────────────────
   rbac:
