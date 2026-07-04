@@ -127,51 +127,36 @@ resource storageTableDataContributorRole 'Microsoft.Authorization/roleAssignment
 }
 
 // ---------------------------------------------------------------------------
-// Function App (Linux Consumption)
+// Function App (Flex Consumption – blob-based deployment, no Azure Files required)
 // ---------------------------------------------------------------------------
 
-// Azure Files content share (required for Premium plan with allowSharedKeyAccess: false)
-resource fileService 'Microsoft.Storage/storageAccounts/fileServices@2023-01-01' = {
+// Blob container for FC1 deployment packages (managed-identity upload, allowSharedKeyAccess=false compatible)
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-01-01' = {
   parent: storageAccount
   name: 'default'
 }
 
-resource contentShare 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-01-01' = {
-  parent: fileService
-  name: 'func-oh-rfp-approver-cu-content'
+resource deploymentContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
+  parent: blobService
+  name: 'deployments'
   properties: {
-    shareQuota: 5120
-    enabledProtocols: 'SMB'
+    publicAccess: 'None'
   }
 }
 
-// Storage File Data SMB Share Contributor – required for managed-identity Azure Files access
-resource storageFileSmbShareContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: storageAccount
-  name: guid(storageAccount.id, managedIdentity.id, '0c867c2a-1d8c-454a-a3db-ab2ea1bdc8bb')
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0c867c2a-1d8c-454a-a3db-ab2ea1bdc8bb')
-    principalId: managedIdentity.properties.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// EP1 (Elastic Premium) supports managed-identity Azure Files; Y1 (Consumption) does not.
-resource appServicePlan 'Microsoft.Web/serverfarms@2022-09-01' = {
+// Flex Consumption (FC1): no Azure Files, blob-based deployment, pay-per-execution
+resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: appServicePlanName
   location: location
-  kind: 'linux'
+  kind: 'functionapp'
   sku: {
-    name: 'EP1'
-    tier: 'ElasticPremium'
+    name: 'FC1'
+    tier: 'FlexConsumption'
   }
-  properties: {
-    reserved: true
-    maximumElasticWorkerCount: 20
-  }
+  properties: {}
 }
 
-resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
+resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   name: functionAppName
   location: location
   kind: 'functionapp,linux'
@@ -184,8 +169,27 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
+    functionAppConfig: {
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: '${storageAccount.properties.primaryEndpoints.blob}${deploymentContainer.name}'
+          authentication: {
+            type: 'UserAssignedIdentity'
+            userAssignedIdentityResourceId: managedIdentity.id
+          }
+        }
+      }
+      scaleAndConcurrency: {
+        maximumInstanceCount: 100
+        instanceMemoryMB: 2048
+      }
+      runtime: {
+        name: 'python'
+        version: '3.11'
+      }
+    }
     siteConfig: {
-      linuxFxVersion: 'Python|3.11'
       appSettings: [
         {
           name: 'AzureWebJobsStorage__accountName'
@@ -214,22 +218,6 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
         {
           name: 'FUNCTIONS_EXTENSION_VERSION'
           value: '~4'
-        }
-        {
-          name: 'FUNCTIONS_WORKER_RUNTIME'
-          value: 'python'
-        }
-        {
-          name: 'WEBSITE_CONTENTSHARE'
-          value: contentShare.name
-        }
-        {
-          name: 'WEBSITE_RUN_FROM_PACKAGE'
-          value: '1'
-        }
-        {
-          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
-          value: '0'
         }
         {
           name: 'AZURE_CLIENT_ID'

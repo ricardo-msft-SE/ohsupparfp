@@ -164,3 +164,20 @@ jobs:
             echo "::warning::AI Search resource not found - assign 'Search Index Data Reader' role manually to the managed identity"
           fi
 
+      - name: Storage Blob Data Contributor – deploy SP (FC1 package upload)
+        run: |
+          STORAGE_ID=$(az storage account show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name stohrfpbottest1 \
+            --query id -o tsv 2>/dev/null || true)
+          if [ -n "$STORAGE_ID" ]; then
+            SP_OID=$(az ad sp show --id "${{ secrets.AZURE_CLIENT_ID }}" --query id -o tsv)
+            az role assignment create \
+              --assignee-object-id "$SP_OID" \
+              --assignee-principal-type ServicePrincipal \
+              --role "Storage Blob Data Contributor" \
+              --scope "$STORAGE_ID" \
+              --only-show-errors || true
+          else
+            echo "::warning::Storage account not found - assign 'Storage Blob Data Contributor' to deploy SP manually"
+          fi
