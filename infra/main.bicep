@@ -9,11 +9,20 @@ param logAnalyticsWorkspaceName string = 'log-oh-rfp'
 @description('User assigned managed identity name')
 param managedIdentityName string = 'id-oh-rfp-web'
 
-@description('App Service Plan name (Consumption)')
+#disable-next-line no-unused-params
 param appServicePlanName string = 'plan-oh-rfp'
 
-@description('Function App name')
+#disable-next-line no-unused-params
 param functionAppName string = 'func-oh-rfp-approver'
+
+@description('Azure Container Registry name (globally unique, 5-50 lowercase alphanumeric)')
+param containerRegistryName string
+
+@description('Container Apps Environment name')
+param containerAppsEnvironmentName string
+
+@description('Container App name')
+param containerAppName string
 
 @description('Azure Bot Service resource name')
 param botServiceName string = 'bot-oh-rfp-approver'
@@ -127,39 +136,48 @@ resource storageTableDataContributorRole 'Microsoft.Authorization/roleAssignment
 }
 
 // ---------------------------------------------------------------------------
-// Function App (Flex Consumption – blob-based deployment, no Azure Files required)
+// Container Registry + Container Apps (replaces Azure Functions – no Azure Files needed)
 // ---------------------------------------------------------------------------
 
-// Blob container for FC1 deployment packages (managed-identity upload, allowSharedKeyAccess=false compatible)
-resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-01-01' = {
-  parent: storageAccount
-  name: 'default'
-}
-
-resource deploymentContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
-  parent: blobService
-  name: 'deployments'
-  properties: {
-    publicAccess: 'None'
-  }
-}
-
-// Flex Consumption (FC1): no Azure Files, blob-based deployment, pay-per-execution
-resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
-  name: appServicePlanName
+resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
+  name: containerRegistryName
   location: location
-  kind: 'functionapp'
   sku: {
-    name: 'FC1'
-    tier: 'FlexConsumption'
+    name: 'Basic'
   }
-  properties: {}
+  properties: {
+    adminUserEnabled: false  // pull via managed identity only – no shared keys
+  }
 }
 
-resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
-  name: functionAppName
+// AcrPull: managed identity needs this to pull images at Container App startup
+resource acrPullRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: containerRegistry
+  name: guid(containerRegistry.id, managedIdentity.id, '7f951dda-4ed3-4680-a7ca-43fe172d538d')
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
+    principalId: managedIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' = {
+  name: containerAppsEnvironmentName
   location: location
-  kind: 'functionapp,linux'
+  properties: {
+    appLogsConfiguration: {
+      destination: 'log-analytics'
+      logAnalyticsConfiguration: {
+        customerId: logAnalytics.properties.customerId
+        sharedKey: logAnalytics.listKeys().primarySharedKey
+      }
+    }
+  }
+}
+
+resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
+  name: containerAppName
+  location: location
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
@@ -167,103 +185,57 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     }
   }
   properties: {
-    serverFarmId: appServicePlan.id
-    httpsOnly: true
-    functionAppConfig: {
-      deployment: {
-        storage: {
-          type: 'blobContainer'
-          value: '${storageAccount.properties.primaryEndpoints.blob}${deploymentContainer.name}'
-          authentication: {
-            type: 'UserAssignedIdentity'
-            userAssignedIdentityResourceId: managedIdentity.id
-          }
-        }
+    managedEnvironmentId: containerAppsEnvironment.id
+    configuration: {
+      ingress: {
+        external: true
+        targetPort: 80
+        transport: 'http'
       }
-      scaleAndConcurrency: {
-        maximumInstanceCount: 100
-        instanceMemoryMB: 2048
-      }
-      runtime: {
-        name: 'python'
-        version: '3.11'
-      }
-    }
-    siteConfig: {
-      appSettings: [
+      registries: [
         {
-          name: 'AzureWebJobsStorage__accountName'
-          value: storageAccount.name
-        }
-        {
-          name: 'AzureWebJobsStorage__credential'
-          value: 'managedidentity'
-        }
-        {
-          name: 'AzureWebJobsStorage__clientId'
-          value: managedIdentity.properties.clientId
-        }
-        {
-          name: 'AzureWebJobsStorage__blobServiceUri'
-          value: 'https://${storageAccount.name}.blob.${environment().suffixes.storage}'
-        }
-        {
-          name: 'AzureWebJobsStorage__queueServiceUri'
-          value: 'https://${storageAccount.name}.queue.${environment().suffixes.storage}'
-        }
-        {
-          name: 'AzureWebJobsStorage__tableServiceUri'
-          value: 'https://${storageAccount.name}.table.${environment().suffixes.storage}'
-        }
-        {
-          name: 'FUNCTIONS_EXTENSION_VERSION'
-          value: '~4'
-        }
-        {
-          name: 'AZURE_CLIENT_ID'
-          value: managedIdentity.properties.clientId
-        }
-        {
-          name: 'AZURE_AI_PROJECT_ENDPOINT'
-          value: aiProjectEndpoint
-        }
-        {
-          name: 'AZURE_AI_AGENT_NAME'
-          value: aiAgentName
-        }
-        {
-          name: 'AZURE_AI_ACTIVITY_PROTOCOL_ENDPOINT'
-          value: aiActivityProtocolEndpoint
-        }
-        {
-          name: 'AZURE_AI_RESPONSES_API_ENDPOINT'
-          value: aiResponsesApiEndpoint
-        }
-        {
-          name: 'AZURE_AI_SEARCH_ENDPOINT'
-          value: 'https://${aiSearchServiceName}.search.windows.net'
-        }
-        {
-          name: 'AZURE_AI_SEARCH_INDEX_NAME'
-          value: aiSearchIndexName
-        }
-        {
-          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-          value: appInsights.properties.ConnectionString
-        }
-        {
-          name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
-          value: '~3'
-        }
-        {
-          name: 'MICROSOFT_APP_ID'
-          value: botMicrosoftAppId
-        }
-        {
-          name: 'MICROSOFT_APP_PASSWORD'
-          value: '' // Set this manually in the portal or pass as a secure parameter after registering the app secret.
+          server: containerRegistry.properties.loginServer
+          identity: managedIdentity.id
         }
       ]
+    }
+    template: {
+      containers: [
+        {
+          name: 'rfp-approver-bot'
+          // Placeholder – GitHub Actions updates this to the real ACR image on every deploy
+          image: 'mcr.microsoft.com/k8se/quickstart:latest'
+          resources: {
+            cpu: json('0.5')
+            memory: '1.0Gi'
+          }
+          env: [
+            { name: 'AzureWebJobsStorage__accountName', value: storageAccount.name }
+            { name: 'AzureWebJobsStorage__credential', value: 'managedidentity' }
+            { name: 'AzureWebJobsStorage__clientId', value: managedIdentity.properties.clientId }
+            { name: 'AzureWebJobsStorage__blobServiceUri', value: 'https://${storageAccount.name}.blob.${environment().suffixes.storage}' }
+            { name: 'AzureWebJobsStorage__queueServiceUri', value: 'https://${storageAccount.name}.queue.${environment().suffixes.storage}' }
+            { name: 'AzureWebJobsStorage__tableServiceUri', value: 'https://${storageAccount.name}.table.${environment().suffixes.storage}' }
+            { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
+            { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'python' }
+            { name: 'AZURE_CLIENT_ID', value: managedIdentity.properties.clientId }
+            { name: 'AZURE_AI_PROJECT_ENDPOINT', value: aiProjectEndpoint }
+            { name: 'AZURE_AI_AGENT_NAME', value: aiAgentName }
+            { name: 'AZURE_AI_ACTIVITY_PROTOCOL_ENDPOINT', value: aiActivityProtocolEndpoint }
+            { name: 'AZURE_AI_RESPONSES_API_ENDPOINT', value: aiResponsesApiEndpoint }
+            { name: 'AZURE_AI_SEARCH_ENDPOINT', value: 'https://${aiSearchServiceName}.search.windows.net' }
+            { name: 'AZURE_AI_SEARCH_INDEX_NAME', value: aiSearchIndexName }
+            { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
+            { name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: '~3' }
+            { name: 'MICROSOFT_APP_ID', value: botMicrosoftAppId }
+            { name: 'MICROSOFT_APP_PASSWORD', value: '' }  // set by GitHub Actions post-deploy step
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: 1
+        maxReplicas: 3
+      }
     }
   }
 }
@@ -285,9 +257,8 @@ resource botService 'Microsoft.BotService/botServices@2022-09-15' = {
     msaAppId: botMicrosoftAppId
     msaAppType: 'SingleTenant'
     msaAppTenantId: subscription().tenantId
-    // Messaging endpoint: the Azure Functions /api/messages HTTP trigger.
-    // Ref: https://learn.microsoft.com/en-us/azure/bot-service/bot-service-channel-connect-teams
-    endpoint: 'https://${functionApp.properties.defaultHostName}/api/messages'
+    // Messaging endpoint: Container App ingress URL
+    endpoint: 'https://${containerApp.properties.configuration.ingress.fqdn}/api/messages'
   }
 }
 
@@ -307,8 +278,12 @@ resource botTeamsChannel 'Microsoft.BotService/botServices/channels@2022-09-15' 
 // Outputs
 // ---------------------------------------------------------------------------
 
-output functionAppUrl string = 'https://${functionApp.properties.defaultHostName}'
-output botMessagingEndpoint string = 'https://${functionApp.properties.defaultHostName}/api/messages'
+output containerAppFqdn string = containerApp.properties.configuration.ingress.fqdn
+output containerRegistryLoginServer string = containerRegistry.properties.loginServer
+output containerRegistryName string = containerRegistry.name
+output containerAppName string = containerApp.name
+output functionAppUrl string = 'https://${containerApp.properties.configuration.ingress.fqdn}'
+output botMessagingEndpoint string = 'https://${containerApp.properties.configuration.ingress.fqdn}/api/messages'
 output managedIdentityPrincipalId string = managedIdentity.properties.principalId
 output storageAccountName string = storageAccount.name
 output appInsightsName string = appInsights.name

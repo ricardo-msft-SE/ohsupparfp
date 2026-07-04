@@ -11,9 +11,10 @@ permissions:
 
 env:
   RESOURCE_GROUP: rg-ohsupparfp-web-eus
-  RESOURCE_GROUP_LOCATION: eastus    # FC1 (Flex Consumption) requires eastus; centralus not supported
+  RESOURCE_GROUP_LOCATION: eastus
   LOCATION: eastus
-  FUNCTION_APP_NAME: func-oh-rfp-approver-eus
+  CONTAINER_APP_NAME: ca-rfp-approver-eus
+  CONTAINER_REGISTRY_NAME: acrrfpapprovereus
   FOUNDRY_RESOURCE_GROUP: rg-ohsupparfp
   FOUNDRY_RESOURCE_NAME: ohsupparfp-resource
   SEARCH_RESOURCE_GROUP: rg-ohsupparfp
@@ -33,6 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       principal_id: ${{ steps.bicep.outputs.principal_id }}
+      acr_login_server: ${{ steps.bicep.outputs.acr_login_server }}
+      container_app_fqdn: ${{ steps.bicep.outputs.container_app_fqdn }}
 
     steps:
       - uses: actions/checkout@v4
@@ -57,12 +60,16 @@ jobs:
             --query "properties.outputs" \
             --output json)
           echo "principal_id=$(echo "$OUTPUTS" | jq -r '.managedIdentityPrincipalId.value')" >> "$GITHUB_OUTPUT"
+          echo "acr_login_server=$(echo "$OUTPUTS" | jq -r '.containerRegistryLoginServer.value')" >> "$GITHUB_OUTPUT"
+          echo "container_app_fqdn=$(echo "$OUTPUTS" | jq -r '.containerAppFqdn.value')" >> "$GITHUB_OUTPUT"
 
-  # ─── 2. Function App code ─────────────────────────────────────────────────
-  deploy-functions:
-    name: Deploy Azure Functions code
+  # ─── 2. Build Docker image + push to ACR ─────────────────────────────────
+  build-push:
+    name: Build and push container image
     runs-on: ubuntu-latest
     needs: infra
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -74,33 +81,67 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Set bot client secret on Function App
+      - name: Grant deploy SP AcrPush (idempotent)
         run: |
-          az functionapp config appsettings set \
-            --resource-group "$RESOURCE_GROUP" \
-            --name "$FUNCTION_APP_NAME" \
-            --settings "MICROSOFT_APP_PASSWORD=${{ secrets.MICROSOFT_APP_PASSWORD }}"
+          ACR_ID=$(az acr show --resource-group "$RESOURCE_GROUP" --name "$CONTAINER_REGISTRY_NAME" --query id -o tsv)
+          SP_OID=$(az ad sp show --id "${{ secrets.AZURE_CLIENT_ID }}" --query id -o tsv)
+          az role assignment create \
+            --assignee-object-id "$SP_OID" \
+            --assignee-principal-type ServicePrincipal \
+            --role "AcrPush" \
+            --scope "$ACR_ID" \
+            --only-show-errors || true
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - name: Log in to ACR
+        run: az acr login --name "$CONTAINER_REGISTRY_NAME"
+
+      - name: Set image tag
+        id: meta
+        run: echo "image_tag=${{ needs.infra.outputs.acr_login_server }}/rfp-approver:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image
+        run: |
+          docker build -t "${{ steps.meta.outputs.image_tag }}" ./api
+          docker push "${{ steps.meta.outputs.image_tag }}"
+
+  # ─── 3. Deploy to Container App ──────────────────────────────────────────
+  deploy:
+    name: Deploy to Container App
+    runs-on: ubuntu-latest
+    needs: [infra, build-push]
+
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
         with:
-          python-version: '3.11'
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Install Python dependencies into .python_packages
+      - name: Update Container App image
         run: |
-          pip install -r api/requirements.txt \
-            --target api/.python_packages/lib/site-packages \
-            --upgrade --quiet
-
-      - name: Deploy to Azure Functions (Flex Consumption – blob upload)
-        run: |
-          cd api
-          zip -r /tmp/deploy.zip . -x "*.pyc" -x "__pycache__/*" -x ".venv/*"
-          echo "Zip size: $(du -sh /tmp/deploy.zip | cut -f1)"
-          az functionapp deployment source config-zip \
+          az containerapp update \
             --resource-group "$RESOURCE_GROUP" \
-            --name "$FUNCTION_APP_NAME" \
-            --src /tmp/deploy.zip
+            --name "$CONTAINER_APP_NAME" \
+            --image "${{ needs.build-push.outputs.image_tag }}"
+
+      - name: Set bot client secret on Container App
+        run: |
+          az containerapp secret set \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$CONTAINER_APP_NAME" \
+            --secrets "microsoftapppassword=${{ secrets.MICROSOFT_APP_PASSWORD }}" || true
+          az containerapp update \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$CONTAINER_APP_NAME" \
+            --set-env-vars "MICROSOFT_APP_PASSWORD=secretref:microsoftapppassword"
+
+      - name: Show Container App FQDN
+        run: |
+          FQDN="${{ needs.infra.outputs.container_app_fqdn }}"
+          echo "Bot endpoint: https://$FQDN/api/messages"
+          echo "Health check: https://$FQDN/api/health"
+          echo "Update teams-app/manifest.json validDomains to: $FQDN"
 
   # ─── 3. RBAC assignments ──────────────────────────────────────────────────
   rbac:
