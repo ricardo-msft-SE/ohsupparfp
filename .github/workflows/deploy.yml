@@ -46,18 +46,6 @@ jobs:
       - name: Ensure resource group exists
         run: az group create --name $RESOURCE_GROUP --location $LOCATION
 
-      - name: Register required resource providers
-        run: |
-          for ns in \
-            Microsoft.Web \
-            Microsoft.OperationalInsights \
-            Microsoft.ManagedIdentity \
-            Microsoft.CognitiveServices \
-            Microsoft.Storage \
-            Microsoft.BotService; do
-            az provider register --namespace "$ns" --wait --only-show-errors
-          done
-
       - name: Deploy Bicep and capture outputs
         id: bicep
         run: |
