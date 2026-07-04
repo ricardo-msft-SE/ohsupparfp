@@ -40,7 +40,7 @@
     "messageTeamMembers"
   ],
   "validDomains": [
-    "*.azurecontainerapps.io"
+    "ca-rfp-approver-eus.livelyground-b2c99997.eastus.azurecontainerapps.io"
   ],
   "defaultInstallScope": "personal"
 }

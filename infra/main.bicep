@@ -24,11 +24,10 @@ param containerAppsEnvironmentName string
 @description('Container App name')
 param containerAppName string
 
-@description('Azure Bot Service resource name')
-param botServiceName string = 'bot-oh-rfp-approver'
-
-@description('Entra App Registration client ID for the bot (MICROSOFT_APP_ID). Create via az ad app create.')
-param botMicrosoftAppId string
+#disable-next-line no-unused-params
+param botServiceName string = 'bot-oh-rfp-approver'  // managed outside Bicep
+#disable-next-line no-unused-params
+param botMicrosoftAppId string  // kept for reference only
 
 @description('Foundry project endpoint URL')
 param aiProjectEndpoint string = 'https://ohsupparfp-resource.services.ai.azure.com/api/projects/ohsupparfp'
@@ -241,39 +240,6 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
 }
 
 // ---------------------------------------------------------------------------
-// Azure Bot Service + Teams Channel
-// Ref: https://learn.microsoft.com/en-us/azure/bot-service/bot-service-overview
-// ---------------------------------------------------------------------------
-
-resource botService 'Microsoft.BotService/botServices@2022-09-15' = {
-  name: botServiceName
-  location: 'global' // Bot Services are always deployed globally.
-  kind: 'azurebot'
-  sku: {
-    name: 'S1'
-  }
-  properties: {
-    displayName: 'RFP Approver Bot'
-    msaAppId: botMicrosoftAppId
-    msaAppType: 'SingleTenant'
-    msaAppTenantId: subscription().tenantId
-    // Messaging endpoint: Container App ingress URL
-    endpoint: 'https://${containerApp.properties.configuration.ingress.fqdn}/api/messages'
-  }
-}
-
-resource botTeamsChannel 'Microsoft.BotService/botServices/channels@2022-09-15' = {
-  parent: botService
-  name: 'MsTeamsChannel'
-  location: 'global'
-  properties: {
-    channelName: 'MsTeamsChannel'
-    properties: {
-      isEnabled: true
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Outputs
 // ---------------------------------------------------------------------------
