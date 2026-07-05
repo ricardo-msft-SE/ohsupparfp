@@ -227,6 +227,7 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
             { name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: '~3' }
             { name: 'MICROSOFT_APP_ID', value: botMicrosoftAppId }
+            { name: 'MICROSOFT_APP_TENANT_ID', value: subscription().tenantId }
             { name: 'MICROSOFT_APP_PASSWORD', value: '' }  // set by GitHub Actions post-deploy step
           ]
         }
