@@ -41,7 +41,17 @@ async def messages(request: web.Request) -> web.Response:
     auth_header = request.headers.get("Authorization", "")
 
     bot = RfpApproverBot()
-    invoke_response = await adapter.process_activity(activity, auth_header, bot.on_turn)
+    try:
+        invoke_response = await adapter.process_activity(activity, auth_header, bot.on_turn)
+    except PermissionError as e:
+        logger.warning("Auth error processing activity: %s", e)
+        return web.Response(status=401, text="Unauthorized")
+    except (TypeError, ValueError) as e:
+        logger.warning("Invalid activity: %s", e)
+        return web.Response(status=400, text="Bad Request")
+    except Exception as e:
+        logger.error("Unhandled error in messages: %s", e, exc_info=True)
+        return web.Response(status=500, text="Internal Server Error")
 
     if invoke_response:
         return web.Response(
