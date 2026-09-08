@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Microsoft 365 Copilot + Foundry Agents Demo — Highway Incident Response</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <div class="odot-brandbar">
+        <img class="odot-logo" src="https://dam.assets.ohio.gov/image/upload/f_auto/q_auto/v1702545730/transportation.ohio.gov/assets/Logo_Assets/ODOT_Zephyr-HORZ-RGB.png" alt="Ohio Department of Transportation" />
+        <div class="odot-brandbar-text">
+          <div class="odot-title">Ohio Department of Transportation</div>
+          <div class="odot-subtitle">Statewide Incident Response · Powered by Microsoft 365 Copilot &amp; Azure AI Foundry</div>
+        </div>
+      </div>
+
+      <header class="topbar">
+        <div class="story-controls">
+          <button class="nav-btn" id="prevBtn" aria-label="Previous step">◀ Previous</button>
+          <button class="nav-btn primary" id="nextBtn" aria-label="Next step">▶ Next</button>
+          <button class="nav-btn" id="playBtn" aria-label="Play all">▶▶ Play All</button>
+          <button class="nav-btn" id="pauseBtn" aria-label="Pause playback">⏸ Pause</button>
+          <button class="nav-btn" id="restartBtn" aria-label="Restart demo">↺ Restart</button>
+        </div>
+        <div class="step-indicator" id="stepIndicator">Step 1 of 14</div>
+      </header>
+
+      <main class="demo-layout">
+        <section class="panel copilot-panel">
+          <div class="panel-header">
+            <div class="brand-group">
+              <div class="brand-mark">M365</div>
+              <div>
+                <div class="eyebrow">Microsoft 365 Copilot</div>
+                <h2>Emergency Operations Workspace</h2>
+              </div>
+            </div>
+            <button class="toggle-btn" type="button" id="themeToggle">Dark mode</button>
+          </div>
+
+          <div class="copilot-shell">
+            <div class="chat-header-row">
+              <div class="status-chip" id="chatStatus">Gathering context</div>
+            </div>
+
+            <div class="copilot-thread" id="copilotThread"></div>
+
+            <div class="prompt-bar">
+              <div class="prompt-label">Suggested prompts</div>
+              <div class="suggestions" id="suggestions"></div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="panel mission-panel">
+          <div class="mission-header">
+            <div>
+              <div class="eyebrow accent">AI Mission Control</div>
+              <h2>Agent Operations</h2>
+            </div>
+            <div class="system-health">
+              <span class="dot pulse"></span>
+              <span>Systems online</span>
+            </div>
+          </div>
+
+          <div class="fleet-overview">
+            <div class="overview-header">
+              <span>Fleet Overview</span>
+              <span class="mini-badge" id="fleetBadge">Standby</span>
+            </div>
+            <div class="metric-grid" id="metricsGrid"></div>
+          </div>
+
+          <div class="orchestrator-card">
+            <div class="orchestrator-axis">
+              <div class="ring ring-outer"></div>
+              <div class="ring ring-middle"></div>
+              <div class="ring ring-inner"></div>
+              <div class="orchestrator-core">
+                <span class="core-label">M365 Copilot</span>
+                <strong>Orchestrator</strong>
+              </div>
+            </div>
+            <div class="orchestrator-copy" id="orchestratorCopy">
+              <div class="copy-header">Coordinator</div>
+              <p>Monitoring enterprise context and coordinating the specialist agent team.</p>
+            </div>
+          </div>
+
+          <div class="agent-section">
+            <div class="section-header">
+              <span>Agent Workforce</span>
+            </div>
+            <div class="agent-grid" id="agentGrid"></div>
+          </div>
+
+          <div class="timeline-section">
+            <div class="section-header">
+              <span>Live Activity Timeline</span>
+            </div>
+            <div class="timeline" id="timeline"></div>
+          </div>
+
+          <div class="impact-panel">
+            <div class="impact-header">Executive impact</div>
+            <div class="impact-grid" id="impactGrid"></div>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <div class="trace-overlay" id="traceOverlay">
+      <div class="trace-modal" role="dialog" aria-modal="true" aria-labelledby="traceAgentName">
+        <div class="trace-modal-header">
+          <div>
+            <div class="eyebrow accent">Agent Trace</div>
+            <h2 id="traceAgentName">Agent</h2>
+          </div>
+          <button class="trace-close" id="traceClose" aria-label="Close trace">✕</button>
+        </div>
+        <div class="trace-modal-subheader">
+          <span class="trace-status-badge" id="traceStatusBadge">Idle</span>
+          <span class="trace-meta" id="traceMeta"></span>
+        </div>
+        <div class="trace-steps" id="traceSteps"></div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
